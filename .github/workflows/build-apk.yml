@@ -1,0 +1,108 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # faqat tag'dan GitHub Release yaratish uchun
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Accept Android SDK licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      # Repodagi gradle-wrapper.jar o'rniga rasmiy Gradle 8.9 ishlatiladi
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build Debug APK
+        run: gradle assembleDebug -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
+
+      # Kvota to'lsa ham build yiqilmasin (APK baribir Releases'ga yuklanadi)
+      - name: Upload Debug APK
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: DublajUz-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 1
+          overwrite: true
+
+      # Ixtiyoriy: Secrets ga KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD qo'shsangiz
+      # release o'z kalitingiz bilan imzolanadi. Aks holda debug kalit bilan imzolanadi (o'rnatsa bo'ladi).
+      - name: Decode keystore
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build Release APK
+        continue-on-error: true
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle assembleRelease -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
+
+      - name: Upload Release APK
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: DublajUz-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: ignore
+          retention-days: 1
+          overwrite: true
+
+      - name: Publish GitHub Release (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+
+      # Har bir push'dan keyin yangi reliz: ilova ichidagi "yangilanish tekshiruvi" shuni o'qiydi
+      - name: Prepare APK for release
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        run: |
+          ls -la app/build/outputs/apk/debug/
+          cp app/build/outputs/apk/debug/*.apk DublajUz.apk
+
+      - name: Publish build release
+        if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: DublajUz 0.4.${{ github.run_number }}
+          body: ${{ github.event.head_commit.message }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: DublajUz.apk
+          fail_on_unmatched_files: true

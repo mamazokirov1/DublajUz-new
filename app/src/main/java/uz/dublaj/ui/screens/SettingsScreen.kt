@@ -1,0 +1,874 @@
+package uz.dublaj.ui.screens
+
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
+import uz.dublaj.ui.components.CollectUiEvents
+
+import android.app.Activity
+import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import uz.dublaj.data.VoicePreset
+import uz.dublaj.data.applyPreset
+import uz.dublaj.stt.WhisperRecognizer
+import uz.dublaj.translate.GeminiTranslator
+import uz.dublaj.translate.Languages
+import uz.dublaj.ui.components.*
+import uz.dublaj.ui.theme.ThemeSettings
+import uz.dublaj.ui.viewmodel.PipelineViewModel
+import uz.dublaj.util.BugReport
+import uz.dublaj.util.UpdateChecker
+import uz.dublaj.data.UsageStore
+import uz.dublaj.monetization.BillingManager
+import kotlin.math.roundToInt
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    vm: PipelineViewModel,
+    onBack: () -> Unit
+) {
+    val config by vm.config.collectAsState()
+    val models by vm.models.collectAsState()
+    val status by vm.modelStatus.collectAsState()
+    val preview by vm.previewState.collectAsState()
+    val updateMessage by vm.updateMessage.collectAsState()
+    val availableUpdate by vm.update.collectAsState()
+    val updateProgress by vm.updateProgress.collectAsState()
+    val busy by vm.busy.collectAsState()
+    val cancelling by vm.cancelling.collectAsState()
+    val workVersion by vm.workVersion.collectAsState()
+    val host = remember { SnackbarHostState() }
+    CollectUiEvents(vm, host)
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val expert = config.expertMode
+    var showProDialog by remember { mutableStateOf(false) }
+
+    var usedMb by remember { mutableStateOf(0L) }
+    LaunchedEffect(status, workVersion) {
+        vm.refreshModels(context)
+        usedMb = vm.usedBytes(context) / (1024 * 1024)
+    }
+
+    val whisperPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.importWhisper(context, it) }
+    }
+    val voiceRefPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.importVoiceRef(context, it) }
+    }
+    val vitsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.importVitsModel(context, it) }
+    }
+    val vitsCfgPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.importVitsConfig(context, it) }
+    }
+    val startAutoImport = rememberAutoImportAction(vm)
+
+    Scaffold(
+        containerColor = cs.background,
+        snackbarHost = { SnackbarHost(host) },
+        topBar = {
+            TopAppBar(
+                title = { Text("Sozlamalar") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Orqaga")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = cs.background)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .padding(horizontal = 16.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // ---------------- rejim
+            Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Rejim", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = !expert,
+                            onClick = { vm.setConfig(config.copy(expertMode = false)) },
+                            label = { Text("Oddiy") }
+                        )
+                        FilterChip(
+                            selected = expert,
+                            onClick = { vm.setConfig(config.copy(expertMode = true)) },
+                            label = { Text("Ilg'or") }
+                        )
+                    }
+                    Text(
+                        if (expert) "Hamma sozlamalar ko'rinadi."
+                        else "Faqat eng kerakli sozlamalar. Ko'proq nazorat uchun Ilg'or rejimni yoqing.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                }
+            }
+
+
+            // ---------------- Pro / limit
+            val isPro = config.isPro
+            val remaining = remember(isPro, workVersion) {
+                UsageStore.remainingDubs(context, isPro)
+            }
+            val dubsToday = remember(workVersion) { UsageStore.dubsToday(context) }
+            val minsToday = remember(workVersion) { UsageStore.minutesToday(context) }
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isPro) cs.primaryContainer else cs.surface
+                )
+            ) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                if (isPro) "Pro versiya" else "Bepul versiya",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (isPro) "Cheksiz dublyaj • reklamasiz"
+                                else "Kuniga ${UsageStore.FREE_DAILY_DUBS} ta video / ~${UsageStore.FREE_DAILY_MINUTES} daqiqa",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant
+                            )
+                        }
+                        if (isPro) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text("PRO") },
+                                colors = AssistChipDefaults.assistChipColors(
+                                    containerColor = cs.primary,
+                                    labelColor = cs.onPrimary
+                                )
+                            )
+                        }
+                    }
+
+                    if (!isPro) {
+                        // Limit progress
+                        val usedFrac = (dubsToday.toFloat() / UsageStore.FREE_DAILY_DUBS).coerceIn(0f, 1f)
+                        LinearProgressIndicator(
+                            progress = { usedFrac },
+                            modifier = Modifier.fillMaxWidth().height(8.dp),
+                            trackColor = cs.surfaceVariant,
+                        )
+                        Text(
+                            "Bugun: $dubsToday / ${UsageStore.FREE_DAILY_DUBS} video • $minsToday daqiqa ishlatildi • qoldi: $remaining",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSurfaceVariant
+                        )
+                        Text(
+                            "Pro afzalliklari: cheksiz video, reklama yo'q, priorit navbat, yaxshiroq ovoz (Chatterbox).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = cs.onSurfaceVariant
+                        )
+                        Button(
+                            onClick = { showProDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Pro ga o'tish")
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = {
+                                // Test / debug: Pro ni o'chirish (faqat development)
+                                BillingManager.setProLocal(context, false)
+                                vm.setConfig(config.copy(isPro = false))
+                                vm.toast("Pro o'chirildi (test)")
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Text("Pro ni o'chirish (test)")
+                        }
+                    }
+                }
+            }
+
+            // ---------------- onlayn tarjima (Gemini)
+            val uriHandler = LocalUriHandler.current
+            var showKey by remember { mutableStateOf(false) }
+            SectionCard(
+                icon = Icons.Default.Translate,
+                title = "Onlayn tarjima (Gemini)",
+                subtitle = if (config.onlineReady) "Yoqilgan ✓ — Gemini ishlaydi"
+                else "Kalit kiriting — tarjima uchun majburiy",
+                initiallyExpanded = false
+            ) {
+                Text(
+                    "Gemini gaplarni kontekst bilan tarjima qiladi. Internet va API kalit kerak. " +
+                        "Faqat matn (videoning o'zi emas) Google serveriga yuboriladi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                SwitchRow(
+                    "Gemini bilan tarjima qilish",
+                    "Kalit kiritilgach ishlaydi. Tarjima uchun majburiy.",
+                    config.onlineTranslate
+                ) { vm.setConfig(config.copy(onlineTranslate = it)) }
+                OutlinedTextField(
+                    value = config.geminiKey,
+                    onValueChange = { vm.setConfig(config.copy(geminiKey = it.trim())) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    singleLine = true,
+                    label = { Text("Gemini API kaliti") },
+                    visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { showKey = !showKey }, shape = MaterialTheme.shapes.medium) {
+                        Text(if (showKey) "Yashirish" else "Ko'rsatish")
+                    }
+                    Button(
+                        onClick = { vm.testGemini() },
+                        enabled = config.geminiKey.isNotBlank(),
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Kalitni tekshirish") }
+                }
+                Text("Kalitni qanday olish mumkin:", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "1. Pastdagi tugmani bosing (Google AI Studio ochiladi).\n" +
+                        "2. Google akkauntingiz bilan kiring.\n" +
+                        "3. \"Create API key\" tugmasini bosing.\n" +
+                        "4. Chiqqan kalitni nusxalab, yuqoridagi maydonga qo'ying.\n" +
+                        "5. \"Kalitni tekshirish\" ni bosing, so'ng tarjimani yoqing.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                OutlinedButton(
+                    onClick = { uriHandler.openUri(GeminiTranslator.KEY_URL) },
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.Link, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Kalit olish (aistudio.google.com/apikey)")
+                }
+                if (expert) {
+                    OutlinedTextField(
+                        value = config.geminiModel,
+                        onValueChange = { vm.setConfig(config.copy(geminiModel = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        singleLine = true,
+                        label = { Text("Gemini modeli") },
+                        supportingText = { Text("Standart: ${GeminiTranslator.DEFAULT_MODEL}") }
+                    )
+                }
+                Text("Tarjima uslubi", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = config.videoContext,
+                    onValueChange = { vm.setConfig(config.copy(videoContext = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    minLines = 2,
+                    maxLines = 5,
+                    label = { Text("Video mavzusi va uslubi (ixtiyoriy)") },
+                    supportingText = { Text("Masalan: yo'l harakati, norasmiy, ustoz shogirdga gapiradi") }
+                )
+                Text("Murojaat", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("auto" to "Avto", "sen" to "Sen", "siz" to "Siz").forEach { (id, label) ->
+                        FilterChip(
+                            selected = config.addressForm == id,
+                            onClick = { vm.setConfig(config.copy(addressForm = id)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                Text("Ohang", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("casual" to "Og'zaki", "neutral" to "Oddiy", "formal" to "Rasmiy").forEach { (id, label) ->
+                        FilterChip(
+                            selected = config.tone == id,
+                            onClick = { vm.setConfig(config.copy(tone = id)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = config.glossary,
+                    onValueChange = { vm.setConfig(config.copy(glossary = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    minLines = 3,
+                    maxLines = 8,
+                    label = { Text("Lug'at (ixtiyoriy)") },
+                    supportingText = { Text("Har qatorda: so'z = tarjima. Masalan: фура = yuk mashinasi") }
+                )
+                status?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                }
+                Text(
+                    "Kalit faqat shu telefonda saqlanadi va hisobotlarga qo'shilmaydi. Bepul limitlar Google tomonidan o'zgarishi mumkin.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
+            // ---------------- ovoz: Chatterbox (server) va klonlash — faqat ilg'or rejimda (tajriba)
+            if (expert) {
+            var showCbToken by remember { mutableStateOf(false) }
+            SectionCard(
+                icon = Icons.Default.Mic,
+                title = "Tajriba: Chatterbox ovozi (server)",
+                subtitle = if (config.chatterboxReady) "Chatterbox yoqilgan ✓" else "Offline ovoz (VITS) ishlaydi",
+                initiallyExpanded = false
+            ) {
+                Text(
+                    "Chatterbox o'zbekcha ovozni ancha tabiiy chiqaradi va ixtiyoriy namuna ovozni klonlay oladi. " +
+                        "Model telefonda ishlamaydi: uni Google Colab (GPU) yoki o'z serveringizda ishga tushirib, manzilini kiriting. " +
+                        "Server ishlamasa, offline ovoz zaxira bo'ladi (agar uning fayllari qo'shilgan bo'lsa).",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                Text("Ovoz dvigateli", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("vits" to "Offline (VITS)", "chatterbox" to "Chatterbox").forEach { (id, label) ->
+                        FilterChip(
+                            selected = config.ttsEngine == id,
+                            onClick = { vm.setConfig(config.copy(ttsEngine = id)) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                if (config.ttsEngine == "chatterbox") {
+                    OutlinedTextField(
+                        value = config.cbUrl,
+                        onValueChange = { vm.setConfig(config.copy(cbUrl = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        singleLine = true,
+                        label = { Text("Server manzili (https://…)") }
+                    )
+                    OutlinedTextField(
+                        value = config.cbToken,
+                        onValueChange = { vm.setConfig(config.copy(cbToken = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        singleLine = true,
+                        label = { Text("Server tokeni") },
+                        visualTransformation = if (showCbToken) VisualTransformation.None else PasswordVisualTransformation()
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedButton(onClick = { showCbToken = !showCbToken }, shape = MaterialTheme.shapes.medium) {
+                            Text(if (showCbToken) "Yashirish" else "Ko'rsatish")
+                        }
+                        Button(
+                            onClick = { vm.testChatterbox() },
+                            enabled = config.cbUrl.isNotBlank(),
+                            shape = MaterialTheme.shapes.medium
+                        ) { Text("Serverni tekshirish") }
+                    }
+                    Text("Qaysi ovozda gapirsin", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("default" to "Standart", "video" to "Videodagi ovoz", "file" to "Namuna fayl").forEach { (id, label) ->
+                            FilterChip(
+                                selected = config.cbVoiceMode == id,
+                                onClick = { vm.setConfig(config.copy(cbVoiceMode = id)) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                    if (config.cbVoiceMode == "video") {
+                        Text(
+                            "Videodan ≈10 soniyalik namuna avtomatik olinadi (matn aniqlash paytida). Bir nechta spiker bo'lsa yoki fon musiqasi baland bo'lsa, \"Namuna fayl\" yaxshiroq.",
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                        )
+                    }
+                    if (config.cbVoiceMode == "file") {
+                        OutlinedButton(
+                            onClick = { voiceRefPicker.launch(arrayOf("audio/*")) },
+                            shape = MaterialTheme.shapes.medium
+                        ) { Text("Namuna ovozni tanlash (5–15 soniya, toza nutq)") }
+                        if (config.cbRefName.isNotBlank()) {
+                            Text("Tanlangan: ${config.cbRefName}", style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                        }
+                    }
+                    if (config.cbVoiceMode != "default") {
+                        SwitchRow(
+                            "Bu ovozdan foydalanishga huquqim bor",
+                            "Faqat o'zingizning yoki egasi roziligini bergan ovozni klonlang. Boshqa shaxs ovozini roziligisiz ishlatish qonunga zid bo'lishi mumkin.",
+                            config.cbCloneConsent
+                        ) { vm.setConfig(config.copy(cbCloneConsent = it)) }
+                    }
+                    status?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                    }
+                }
+            }
+            }
+
+            // ---------------- modellar
+            val allReady = models.whisper && models.vits && config.onlineReady
+            SectionCard(
+                icon = Icons.Default.Storage,
+                title = "Yuklab olinadigan komponentlar",
+                subtitle = if (allReady) "Hammasi tayyor ✓" else "Ba'zi komponentlar yetishmaydi",
+                initiallyExpanded = !allReady
+            ) {
+                Text(
+                    "Matn aniqlash va ovoz offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (Sozlamalar → Onlayn tarjima).",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusPill("Matn aniqlash", models.whisper)
+                    StatusPill("Tarjima (Gemini)", config.onlineReady)
+                    StatusPill("Ovoz", models.vits)
+                }
+                status?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                    if (!it.startsWith("Tayyor") && !it.startsWith("Xato") && !it.startsWith("Bekor")) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        OutlinedButton(onClick = { vm.cancel() }, enabled = !cancelling) {
+                            Text(if (cancelling) "Bekor qilinmoqda…" else "Bekor qilish")
+                        }
+                    }
+                }
+                Button(
+                    onClick = { startAutoImport() },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.FolderOpen, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Yuklangan fayllarni avtomatik topish")
+                }
+                Text(
+                    "Telefoningizdagi Yuklanmalar (Download) va boshqa papkalardan kerakli fayllarni o'zi topib qo'shadi. " +
+                        "Birinchi marta \"Barcha fayllarga kirish\" ruxsatini yoqish kerak bo'ladi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+
+                HorizontalDivider()
+                Text("Nutqni matnga aylantirish", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Videodagi gapni eshitib, yozib oladi. \"Tez\" kichik va tez, \"Aniq\" katta va aniqroq (sekinroq).",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WhisperRecognizer.MODEL_OPTIONS.forEach { m ->
+                        FilterChip(
+                            selected = config.whisperModel == m.id,
+                            onClick = { vm.setConfig(config.copy(whisperModel = m.id), context) },
+                            label = { Text("${friendlyModelName(m.id)} • ${m.sizeMb} MB") }
+                        )
+                    }
+                }
+                Text(WhisperRecognizer.info(config.whisperModel).note, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { vm.downloadWhisper(context) }, enabled = !busy) { Text("Yuklash") }
+                    OutlinedButton(onClick = { whisperPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Fayldan qo'shish") }
+                }
+
+                HorizontalDivider()
+                Text("O'zbekcha ovoz", style = MaterialTheme.typography.titleMedium)
+                Text("Tarjimani o'zbekcha o'qiydigan ikki fayl: ovoz fayli (.onnx) va uning sozlama fayli (.json).", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vitsPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Ovoz fayli (.onnx)") }
+                    OutlinedButton(onClick = { vitsCfgPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Sozlama fayli (.json)") }
+                }
+            }
+
+            // ---------------- ovoz sifati
+            var sample by remember {
+                mutableStateOf("Assalomu alaykum! Bu ovoz sinovi. Tabiiy chiqayotganini tinglab ko'ring.")
+            }
+            SectionCard(
+                icon = Icons.Default.GraphicEq,
+                title = "Ovoz sifati",
+                subtitle = "Tinglab ko'rib sozlang",
+                initiallyExpanded = true
+            ) {
+                Text("Tayyor sozlama", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VoicePreset.values().forEach { p ->
+                        FilterChip(
+                            selected = config.applyPreset(p) == config,
+                            onClick = { vm.applyVoicePreset(p) },
+                            label = { Text(p.label) }
+                        )
+                    }
+                }
+
+                HelpSlider(
+                    "Nutq tezligi", "${"%.2f".format(config.voiceSpeed)}×",
+                    "1.0 oddiy tezlik. Past qiymat sekinroq va aniqroq, baland qiymat tezroq gapiradi.",
+                    config.voiceSpeed, 0.7f..1.3f
+                ) { vm.setConfig(config.copy(voiceSpeed = it)) }
+
+                HelpSlider(
+                    "Ovoz tembri", if (config.voicePitch == 0f) "Asl" else "%+.1f".format(config.voicePitch),
+                    "Manfiy qiymat ovozni qalinroq (erkakcha), musbat qiymat ingichkaroq qiladi. 0 — o'zgarishsiz. Gapirish tezligiga ta'sir qilmaydi.",
+                    config.voicePitch, -4f..4f, steps = 15
+                ) { vm.setConfig(config.copy(voicePitch = it)) }
+
+                if (expert) {
+                    HelpSlider(
+                        "Intonatsiya (jonlilik)", "%.2f".format(config.voiceNoise),
+                        "Yuqori qiymat ovozni jonliroq qiladi, lekin beqaror bo'lishi mumkin. Past qiymat bir tekis, robotroq eshitiladi.",
+                        config.voiceNoise, 0.3f..1.0f
+                    ) { vm.setConfig(config.copy(voiceNoise = it)) }
+
+                    HelpSlider(
+                        "Ritm o'zgaruvchanligi", "%.2f".format(config.voiceNoiseW),
+                        "Bo'g'inlar uzunligi qanchalik xilma-xil bo'lishi. Yuqori qiymat tabiiyroq ritm beradi.",
+                        config.voiceNoiseW, 0.1f..1.0f
+                    ) { vm.setConfig(config.copy(voiceNoiseW = it)) }
+
+                    HelpSlider(
+                        "Pauza (gap ichida)", "${"%.2f".format(config.voicePause)} s",
+                        "Uzun gap bo'laklarga bo'linganda orasidagi to'xtash.",
+                        config.voicePause, 0f..0.8f
+                    ) { vm.setConfig(config.copy(voicePause = it)) }
+
+                    HelpSlider(
+                        "Sig'dirish uchun tezlashish", "${"%.2f".format(1f / config.fitScale)}×",
+                        "Gap video vaqtiga sig'masa, ovoz shu darajagacha tezlashtiriladi (sifat saqlanadi). 1.0 o'chiq degani.",
+                        config.fitScale, 0.7f..1.0f
+                    ) { vm.setConfig(config.copy(fitScale = it)) }
+                }
+
+                OutlinedTextField(
+                    value = config.pronDict,
+                    onValueChange = { vm.setConfig(config.copy(pronDict = it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    minLines = 2,
+                    maxLines = 6,
+                    label = { Text("Talaffuz lug'ati (ixtiyoriy)") },
+                    supportingText = { Text("Har qatorda: so'z = qanday o'qilsin. Masalan: Gemini = jemini") }
+                )
+                OutlinedTextField(
+                    value = sample,
+                    onValueChange = { sample = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    label = { Text("Tinglash uchun matn") }
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { vm.previewVoice(context, sample) },
+                        enabled = models.vits && !busy,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Default.PlayArrow, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Tinglab ko'rish")
+                    }
+                    OutlinedButton(onClick = { vm.stopPreview() }, shape = MaterialTheme.shapes.medium) {
+                        Icon(Icons.Default.Stop, null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("To'xtatish")
+                    }
+                }
+                if (!models.vits) {
+                    Text("Tinglash uchun avval o'zbekcha ovoz fayllarini qo'shing.", style = MaterialTheme.typography.bodySmall, color = cs.tertiary)
+                }
+                preview?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
+                Text(
+                    "Haqiqiy dublyajda gaplar video vaqtiga sig'dirilgani uchun ovoz biroz tezroq bo'lishi mumkin.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
+            // ---------------- sinxronlash
+            SectionCard(
+                icon = Icons.Default.Sync,
+                title = "Sinxronlash (vaqt)",
+                subtitle = "Dublaj asl nutqqa mos tushishi",
+                initiallyExpanded = false
+            ) {
+                SwitchRow(
+                    "Vaqtni asl nutqqa moslash",
+                    "Matn aniqlash paytida gap chegaralari asl audiodagi haqiqiy nutq boshlanishi va tugashiga suriladi. Videoni qayta aniqlaganda ishlaydi.",
+                    config.snapSpeech
+                ) { vm.setConfig(config.copy(snapSpeech = it)) }
+                HelpSlider(
+                    "Dublaj siljishi", "${"%+.2f".format(config.syncOffsetS)} s",
+                    "Hamma gaplarni birdaniga surish: musbat — kechroq, manfiy — erta boshlanadi. Dublaj doim erta bo'lsa musbat, kech bo'lsa manfiy qiling.",
+                    config.syncOffsetS, -0.6f..0.6f
+                ) { vm.setConfig(config.copy(syncOffsetS = it)) }
+            }
+
+            // ---------------- aralashtirish
+            SectionCard(
+                icon = Icons.Default.Tune,
+                title = "Aralashtirish",
+                subtitle = "Asl ovoz va dublyaj balandligi"
+            ) {
+                HelpSlider(
+                    "Asl ovoz (jimlikda)", "${(config.originalVolume * 100).roundToInt()}%",
+                    "Videodagi asl ovoz va musiqa balandligi.",
+                    config.originalVolume, 0f..0.6f
+                ) { vm.setConfig(config.copy(originalVolume = it)) }
+
+                HelpSlider(
+                    "O'zbekcha ovoz", "${(config.uzbekVolume * 100).roundToInt()}%",
+                    "Dublyaj ovozi balandligi.",
+                    config.uzbekVolume, 0.5f..1.5f
+                ) { vm.setConfig(config.copy(uzbekVolume = it)) }
+
+                if (expert) {
+                    HelpSlider(
+                        "Gapirganda asl ovoz", "${(config.duckAmount * 100).roundToInt()}%",
+                        "Dublyaj gapirayotganda asl ovoz shu darajagacha pasayadi. 100% degani pasaytirilmaydi.",
+                        config.duckAmount, 0f..1f
+                    ) { vm.setConfig(config.copy(duckAmount = it)) }
+
+                    HelpSlider(
+                        "Maks. tezlashtirish", "${"%.2f".format(config.maxAtempo)}×",
+                        "Gap baribir sig'masa, tayyor ovoz shu tezlikkacha tezlashtiriladi. Past qiymat tabiiyroq, lekin gaplar ustma-ust tushishi mumkin.",
+                        config.maxAtempo, 1.0f..1.6f
+                    ) { vm.setConfig(config.copy(maxAtempo = it)) }
+
+                    SwitchRow(
+                        "Balandlikni tenglash", "Har bir gap bir xil balandlikda eshitiladi.",
+                        config.levelClips
+                    ) { vm.setConfig(config.copy(levelClips = it)) }
+
+                    HelpSlider(
+                        "Ishlash tezligi (protsessor yadrolari)", "${config.threads}",
+                        "Ko'p oqim tezroq ishlaydi, lekin telefon qizishi va xotira sarfi oshishi mumkin.",
+                        config.threads.toFloat(), 1f..8f, steps = 6
+                    ) { vm.setConfig(config.copy(threads = it.roundToInt())) }
+                }
+            }
+
+            // ---------------- til
+            SectionCard(
+                icon = Icons.Default.Language,
+                title = "Video tili",
+                subtitle = Languages.label(config.sourceLang)
+            ) {
+                var expanded by remember { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(onClick = { expanded = true }, shape = MaterialTheme.shapes.medium) {
+                        Text(Languages.label(config.sourceLang))
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Default.ExpandMore, null)
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        Languages.UI_OPTIONS.forEach { (code, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    vm.setConfig(config.copy(sourceLang = code))
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Text(
+                    "Ru/En dan boshqa tillar uchun tilni aniq tanlang.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
+            // ---------------- ko'rinish
+            SectionCard(
+                icon = Icons.Default.Palette,
+                title = "Ko'rinish",
+                subtitle = "Mavzu va ranglar"
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("Tizim", "Yorug'", "Qorong'i").forEachIndexed { i, label ->
+                        FilterChip(
+                            selected = config.themeMode == i,
+                            onClick = {
+                                ThemeSettings.mode = i
+                                vm.setConfig(config.copy(themeMode = i))
+                            },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= 31) {
+                    SwitchRow(
+                        "Telefon ranglari", "Android 12+ (Material You): ranglar fon rasmingizdan olinadi.",
+                        config.dynamicColor
+                    ) {
+                        ThemeSettings.dynamic = it
+                        vm.setConfig(config.copy(dynamicColor = it))
+                    }
+                }
+            }
+
+            // ---------------- yordam
+            var reportNote by remember { mutableStateOf("") }
+            SectionCard(
+                icon = Icons.Default.BugReport,
+                title = "Muammo yoki taklif yuborish",
+                subtitle = if (BugReport.hasCrash(context)) "⚠ Oldingi safar ilova to'xtagan" else "Hisobot yaratib yuboring"
+            ) {
+                Text(
+                    "Ilova to'xtab qolsa yoki taklifingiz bo'lsa, bizga yuboring. Hisobotga faqat telefon va sozlamalar haqida " +
+                        "qisqa ma'lumot kiradi. Videolaringiz va matnlaringiz yuborilmaydi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = reportNote,
+                    onValueChange = { reportNote = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    label = { Text("Izoh yoki taklif (ixtiyoriy)") }
+                )
+                Button(
+                    onClick = {
+                        val f = BugReport.build(context, config, models, reportNote)
+                        BugReport.share(context, f)
+                    },
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.Send, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Yuborish")
+                }
+                Text(
+                    "Pochta ilovasi ochiladi, hammasi tayyor turadi — faqat \"Yuborish\" ni bosasiz.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
+            // ---------------- xotira
+            val shownMb by animateIntAsState(usedMb.toInt(), animationSpec = tween(700), label = "usedMb")
+            SectionCard(
+                icon = Icons.Default.DeleteSweep,
+                title = "Xotira",
+                subtitle = "Vaqtinchalik fayllar: $shownMb MB"
+            ) {
+                Text(
+                    "Video nusxalari va oraliq audio shu yerda turadi. Modellar va tayyor videolar o'chirilmaydi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                SwitchRow(
+                    "Galereyaga avtomatik saqlash",
+                    "Dublyaj tayyor bo'lganda video Movies/DublajUz papkasiga ham saqlanadi. " +
+                        "Ilovani o'chirsangiz ham yo'qolmaydi (Android 10+).",
+                    config.autoSaveGallery
+                ) { vm.setConfig(config.copy(autoSaveGallery = it)) }
+                OutlinedButton(
+                    onClick = { vm.clearWork(context) },
+                    enabled = !busy,
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.DeleteSweep, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Vaqtinchalik fayllarni tozalash")
+                }
+                if (busy) {
+                    Text(
+                        "Jarayon ketayotganda tozalab bo'lmaydi. Tugashini kuting yoki bekor qiling.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.tertiary
+                    )
+                }
+            }
+
+            // ---------------- ilova haqida
+            SectionCard(
+                icon = Icons.Default.Info,
+                title = "Ilova haqida",
+                subtitle = "Versiya ${UpdateChecker.currentVersionName(context)}"
+            ) {
+                Button(onClick = { vm.checkUpdate(context, manual = true) }, shape = MaterialTheme.shapes.medium) {
+                    Icon(Icons.Default.SystemUpdate, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Yangilanishni tekshirish")
+                }
+                updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
+                availableUpdate?.let { u ->
+                    Button(
+                        onClick = { vm.downloadUpdate(context) },
+                        enabled = updateProgress == null,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Default.Download, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Yuklab olish va o'rnatish (${u.versionName})")
+                    }
+                }
+                updateProgress?.let { p ->
+                    LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                    Text("${(p * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(
+                    "Yangi versiya chiqsa, ilova ochilganda kuniga bir marta o'zi xabar beradi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
+            Spacer(Modifier.navigationBarsPadding().height(16.dp))
+        }
+    }
+
+    if (showProDialog) {
+        ProBenefitsDialog(
+            remainingDubs = UsageStore.remainingDubs(context, config.isPro),
+            priceText = BillingManager.priceText(),
+            onUpgrade = {
+                showProDialog = false
+                val act = context as? Activity
+                val launched = act != null && BillingManager.launchPurchase(act)
+                if (launched) {
+                    vm.toast("Xarid oynasi ochildi…")
+                } else {
+                    // Debug / sideload: Play Billing yo'q bo'lsa test Pro
+                    BillingManager.setProLocal(context, true)
+                    vm.setConfig(config.copy(isPro = true))
+                    vm.toast("Pro test rejimida ochildi (Play Billing mahsuloti yo'q yoki ulanmagan)")
+                }
+            },
+            onDismiss = { showProDialog = false }
+        )
+    }
+}
+
+private fun friendlyModelName(id: String): String = when (id) {
+    "tiny" -> "Tez"
+    "base" -> "Oddiy"
+    "small" -> "Aniq"
+    else -> id
+}
+
+@Composable
+private fun SwitchRow(title: String, desc: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.labelLarge)
+            Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+
+}

@@ -1,0 +1,94 @@
+package uz.dublaj.data
+
+import android.content.Context
+
+/** Sozlamalarni saqlaydi — ilova qayta ochilganda yo'qolmaydi. */
+object ConfigStore {
+    private const val PREFS = "dublaj_config"
+
+    fun load(context: Context): AppConfig {
+        val sp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val d = AppConfig()
+        return AppConfig(
+            originalVolume = sp.getFloat("originalVolume", d.originalVolume),
+            uzbekVolume = sp.getFloat("uzbekVolume", d.uzbekVolume),
+            maxAtempo = sp.getFloat("maxAtempo", d.maxAtempo),
+            whisperModel = sp.getString("whisperModel", d.whisperModel) ?: d.whisperModel,
+            threads = sp.getInt("threads", d.threads),
+            marginS = sp.getFloat("marginS", d.marginS),
+            gapS = sp.getFloat("gapS", d.gapS),
+            sourceLang = sp.getString("sourceLang", d.sourceLang) ?: d.sourceLang,
+            voiceNoise = sp.getFloat("voiceNoise", d.voiceNoise),
+            voiceNoiseW = sp.getFloat("voiceNoiseW", d.voiceNoiseW),
+            voiceSpeed = sp.getFloat("voiceSpeed", d.voiceSpeed),
+            voicePause = sp.getFloat("voicePause", d.voicePause),
+            voicePitch = sp.getFloat("voicePitch", d.voicePitch),
+            fitScale = sp.getFloat("fitScale", d.fitScale),
+            duckAmount = sp.getFloat("duckAmount", d.duckAmount),
+            levelClips = sp.getBoolean("levelClips", d.levelClips),
+            expertMode = sp.getBoolean("expertMode", d.expertMode),
+            themeMode = sp.getInt("themeMode", d.themeMode),
+            dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
+            autoSaveGallery = sp.getBoolean("autoSaveGallery", d.autoSaveGallery),
+            onlineTranslate = sp.getBoolean("onlineTranslate", d.onlineTranslate),
+            geminiKey = sp.getString("geminiKey", d.geminiKey) ?: d.geminiKey,
+            geminiModel = sp.getString("geminiModel", d.geminiModel) ?: d.geminiModel,
+            videoContext = sp.getString("videoContext", d.videoContext) ?: d.videoContext,
+            addressForm = sp.getString("addressForm", d.addressForm) ?: d.addressForm,
+            tone = sp.getString("tone", d.tone) ?: d.tone,
+            glossary = sp.getString("glossary", d.glossary) ?: d.glossary,
+            pronDict = sp.getString("pronDict", d.pronDict) ?: d.pronDict,
+            snapSpeech = sp.getBoolean("snapSpeech", d.snapSpeech),
+            syncOffsetS = sp.getFloat("syncOffsetS", d.syncOffsetS),
+            ttsEngine = sp.getString("ttsEngine", d.ttsEngine) ?: d.ttsEngine,
+            cbUrl = sp.getString("cbUrl", d.cbUrl) ?: d.cbUrl,
+            cbToken = sp.getString("cbToken", d.cbToken) ?: d.cbToken,
+            cbVoiceMode = sp.getString("cbVoiceMode", d.cbVoiceMode) ?: d.cbVoiceMode,
+            cbCloneConsent = sp.getBoolean("cbCloneConsent", d.cbCloneConsent),
+            cbRefName = sp.getString("cbRefName", d.cbRefName) ?: d.cbRefName,
+            isPro = sp.getBoolean("isPro", d.isPro)
+        )
+    }
+
+    fun save(context: Context, c: AppConfig) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putFloat("originalVolume", c.originalVolume)
+            .putFloat("uzbekVolume", c.uzbekVolume)
+            .putFloat("maxAtempo", c.maxAtempo)
+            .putString("whisperModel", c.whisperModel)
+            .putInt("threads", c.threads)
+            .putFloat("marginS", c.marginS)
+            .putFloat("gapS", c.gapS)
+            .putString("sourceLang", c.sourceLang)
+            .putFloat("voiceNoise", c.voiceNoise)
+            .putFloat("voiceNoiseW", c.voiceNoiseW)
+            .putFloat("voiceSpeed", c.voiceSpeed)
+            .putFloat("voicePause", c.voicePause)
+            .putFloat("voicePitch", c.voicePitch)
+            .putFloat("fitScale", c.fitScale)
+            .putFloat("duckAmount", c.duckAmount)
+            .putBoolean("levelClips", c.levelClips)
+            .putBoolean("expertMode", c.expertMode)
+            .putInt("themeMode", c.themeMode)
+            .putBoolean("dynamicColor", c.dynamicColor)
+            .putBoolean("autoSaveGallery", c.autoSaveGallery)
+            .putBoolean("onlineTranslate", c.onlineTranslate)
+            .putString("geminiKey", c.geminiKey)
+            .putString("geminiModel", c.geminiModel)
+            .putString("videoContext", c.videoContext)
+            .putString("addressForm", c.addressForm)
+            .putString("tone", c.tone)
+            .putString("glossary", c.glossary)
+            .putString("pronDict", c.pronDict)
+            .putBoolean("snapSpeech", c.snapSpeech)
+            .putFloat("syncOffsetS", c.syncOffsetS)
+            .putString("ttsEngine", c.ttsEngine)
+            .putString("cbUrl", c.cbUrl)
+            .putString("cbToken", c.cbToken)
+            .putString("cbVoiceMode", c.cbVoiceMode)
+            .putBoolean("cbCloneConsent", c.cbCloneConsent)
+            .putString("cbRefName", c.cbRefName)
+            .putBoolean("isPro", c.isPro)
+            .apply()
+    }
+}
