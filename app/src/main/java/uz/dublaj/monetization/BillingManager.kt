@@ -2,6 +2,8 @@ package uz.dublaj.monetization
 
 import android.app.Activity
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
@@ -17,13 +19,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import timber.log.Timber
+import uz.dublaj.BuildConfig
 import uz.dublaj.data.ConfigStore
 
 /**
- * Google Play Billing — bir martalik Pro (`pro_unlock`) va ixtiyoriy obuna (`pro_monthly`).
+ * Google Play Billing 8 — bir martalik Pro (`pro_unlock`) va ixtiyoriy obuna (`pro_monthly`).
  *
  * Play Console da product yarating (ID lar pastdagi konstantalar bilan bir xil bo'lsin).
  * Test: internal testing track + license tester email.
+ *
+ * Release'da Pro FAQAT haqiqiy xariddan keyin ochiladi va xarid qaytarilsa (refund) yopiladi.
+ * Debug (test APK) da "test Pro" qo'lda yoqilishi mumkin (BuildConfig.ALLOW_TEST_UNLOCK).
  */
 object BillingManager : PurchasesUpdatedListener {
 
@@ -32,6 +38,9 @@ object BillingManager : PurchasesUpdatedListener {
 
     private var client: BillingClient? = null
     private var appContext: Context? = null
+    private var connecting = false
+    private var retryCount = 0
+    private val handler = Handler(Looper.getMainLooper())
 
     private val _connected = MutableStateFlow(false)
     val connected: StateFlow<Boolean> = _connected.asStateFlow()
@@ -63,36 +72,59 @@ object BillingManager : PurchasesUpdatedListener {
 
     fun start(context: Context) {
         appContext = context.applicationContext
-        if (client != null) {
-            refreshPurchases(context)
-            return
+        if (client == null) {
+            client = BillingClient.newBuilder(context.applicationContext)
+                .setListener(this)
+                .enablePendingPurchases(
+                    PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
+                )
+                .build()
         }
-        val bc = BillingClient.newBuilder(context.applicationContext)
-            .setListener(this)
-            .enablePendingPurchases(
-                PendingPurchasesParams.newBuilder().enableOneTimeProducts().build()
-            )
-            .build()
-        client = bc
+        val bc = client ?: return
+        if (bc.isReady) {
+            refreshPurchases(context)
+        } else {
+            connect()
+        }
+    }
+
+    /** Ulanish (yoki uzilgandan keyin qayta ulanish) — eksponensial kechikish bilan. */
+    private fun connect() {
+        val bc = client ?: return
+        if (connecting || bc.isReady) return
+        connecting = true
         bc.startConnection(object : BillingClientStateListener {
             override fun onBillingSetupFinished(result: BillingResult) {
+                connecting = false
                 if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                    retryCount = 0
                     _connected.value = true
                     _lastError.value = null
                     Timber.i("Billing ulandi")
                     queryProducts()
-                    refreshPurchases(context.applicationContext)
+                    appContext?.let { refreshPurchases(it) }
                 } else {
                     _connected.value = false
                     _lastError.value = "Billing: ${result.debugMessage} (${result.responseCode})"
                     Timber.w(_lastError.value)
+                    scheduleReconnect()
                 }
             }
+
             override fun onBillingServiceDisconnected() {
+                connecting = false
                 _connected.value = false
                 Timber.w("Billing uzildi — qayta uriniladi")
+                scheduleReconnect()
             }
         })
+    }
+
+    private fun scheduleReconnect() {
+        if (retryCount >= 6) return
+        val delayMs = (2_000L shl retryCount).coerceAtMost(60_000L)
+        retryCount++
+        handler.postDelayed({ connect() }, delayMs)
     }
 
     private fun queryProducts() {
@@ -108,45 +140,68 @@ object BillingManager : PurchasesUpdatedListener {
             )
             .build()
         bc.queryProductDetailsAsync(inapp) { result, detailsResult ->
-            if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                val list = detailsResult.productDetailsList.toMutableList()
-                // Obuna ixtiyoriy — yo'q bo'lsa xato bermaymiz
-                val sub = QueryProductDetailsParams.newBuilder()
-                    .setProductList(
-                        listOf(
-                            QueryProductDetailsParams.Product.newBuilder()
-                                .setProductId(PRODUCT_PRO_MONTHLY)
-                                .setProductType(BillingClient.ProductType.SUBS)
-                                .build()
-                        )
-                    )
-                    .build()
-                bc.queryProductDetailsAsync(sub) { r2, d2 ->
-                    if (r2.responseCode == BillingClient.BillingResponseCode.OK) {
-                        list.addAll(d2.productDetailsList)
-                    }
-                    _productDetails.value = list
-                    Timber.i("ProductDetails: ${list.map { it.productId }}")
-                }
+            val list: MutableList<ProductDetails> = if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                extractDetails(detailsResult).toMutableList()
             } else {
                 Timber.w("ProductDetails xato: ${result.debugMessage}")
+                mutableListOf()
             }
+            // Obuna ixtiyoriy — yo'q bo'lsa xato bermaymiz
+            val sub = QueryProductDetailsParams.newBuilder()
+                .setProductList(
+                    listOf(
+                        QueryProductDetailsParams.Product.newBuilder()
+                            .setProductId(PRODUCT_PRO_MONTHLY)
+                            .setProductType(BillingClient.ProductType.SUBS)
+                            .build()
+                    )
+                )
+                .build()
+            bc.queryProductDetailsAsync(sub) { r2, d2 ->
+                if (r2.responseCode == BillingClient.BillingResponseCode.OK) {
+                    list.addAll(extractDetails(d2))
+                }
+                _productDetails.value = list
+                Timber.i("ProductDetails: ${list.map { it.productId }}")
+            }
+        }
+    }
+
+    /**
+     * Billing versiyalarida queryProductDetailsAsync javobi turlicha (List yoki natija obyekti).
+     * Ikkalasini ham qabul qiladi, shuning uchun kutubxona versiyasiga bog'liq emas.
+     */
+    private fun extractDetails(r: Any?): List<ProductDetails> {
+        if (r == null) return emptyList()
+        if (r is List<*>) return r.filterIsInstance<ProductDetails>()
+        return try {
+            val m = r.javaClass.getMethod("getProductDetailsList")
+            (m.invoke(r) as? List<*>)?.filterIsInstance<ProductDetails>() ?: emptyList()
+        } catch (e: Exception) {
+            Timber.w(e, "ProductDetails javobi o'qilmadi")
+            emptyList()
         }
     }
 
     fun refreshPurchases(context: Context) {
         val bc = client
         if (bc == null || !bc.isReady) {
-            Timber.d("Billing tayyor emas — refresh o'tkazildi")
+            Timber.d("Billing tayyor emas — ulanish urinib ko'riladi")
+            connect()
             return
         }
+        val appCtx = context.applicationContext
         var hasPro = false
+        var allOk = true
         val checkDone = java.util.concurrent.atomic.AtomicInteger(0)
         fun finish() {
             if (checkDone.incrementAndGet() < 2) return
-            // Faqat haqiqiy xarid topilsa Pro; yo'q bo'lsa o'chirmaymiz (test local flag saqlansin)
             if (hasPro) {
-                setProLocal(context.applicationContext, true)
+                if (!isPro(appCtx)) setProLocal(appCtx, true)
+            } else if (allOk && !BuildConfig.ALLOW_TEST_UNLOCK && isPro(appCtx)) {
+                // Release: xarid topilmadi (qaytarilgan/bekor qilingan) — Pro yopiladi.
+                // Faqat ikkala so'rov ham muvaffaqiyatli bo'lsa (tarmoq xatosida o'chirmaymiz).
+                setProLocal(appCtx, false)
             }
         }
         bc.queryPurchasesAsync(
@@ -159,6 +214,8 @@ object BillingManager : PurchasesUpdatedListener {
                         acknowledgeIfNeeded(p)
                     }
                 }
+            } else {
+                allOk = false
             }
             finish()
         }
@@ -172,6 +229,10 @@ object BillingManager : PurchasesUpdatedListener {
                         acknowledgeIfNeeded(p)
                     }
                 }
+            } else {
+                // Obuna mahsuloti yaratilmagan bo'lsa SUBS so'rovi xato qaytarishi mumkin —
+                // bunda "xarid yo'q" deb hisoblamaymiz.
+                allOk = false
             }
             finish()
         }
@@ -194,20 +255,32 @@ object BillingManager : PurchasesUpdatedListener {
             BillingClient.BillingResponseCode.OK -> {
                 if (purchases.isNullOrEmpty()) return
                 var pro = false
+                var pending = false
                 for (p in purchases) {
-                    if (p.purchaseState != Purchase.PurchaseState.PURCHASED) continue
-                    if (p.products.contains(PRODUCT_PRO_UNLOCK) || p.products.contains(PRODUCT_PRO_MONTHLY)) {
-                        pro = true
-                        acknowledgeIfNeeded(p)
+                    val isOurs = p.products.contains(PRODUCT_PRO_UNLOCK) || p.products.contains(PRODUCT_PRO_MONTHLY)
+                    if (!isOurs) continue
+                    when (p.purchaseState) {
+                        Purchase.PurchaseState.PURCHASED -> {
+                            pro = true
+                            acknowledgeIfNeeded(p)
+                        }
+                        Purchase.PurchaseState.PENDING -> pending = true
+                        else -> {}
                     }
                 }
                 if (pro) {
                     setProLocal(ctx, true)
                     _lastError.value = null
+                } else if (pending) {
+                    _lastError.value = "To'lov kutilmoqda — tasdiqlangach Pro avtomatik ochiladi"
                 }
             }
             BillingClient.BillingResponseCode.USER_CANCELED -> {
                 Timber.i("Xarid bekor qilindi")
+            }
+            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
+                // Allaqachon sotib olingan — holatni qayta tiklaymiz
+                refreshPurchases(ctx)
             }
             else -> {
                 _lastError.value = "Xarid xato: ${result.debugMessage} (${result.responseCode})"
@@ -218,19 +291,19 @@ object BillingManager : PurchasesUpdatedListener {
 
     /**
      * Xarid oynasini ochadi.
-     * Product topilmasa yoki Billing ulanmagan bo'lsa — false qaytaradi (UI test unlock qilishi mumkin).
+     * Product topilmasa yoki Billing ulanmagan bo'lsa — false qaytaradi; sabab [lastError] da.
      */
     fun launchPurchase(activity: Activity, productId: String = PRODUCT_PRO_UNLOCK): Boolean {
         val bc = client
         if (bc == null || !bc.isReady) {
-            _lastError.value = "Play Billing ulanmagan (Play Store kerak)"
+            _lastError.value = "Google Play ulanmagan. Ilovani Play Market orqali o'rnating va internetni tekshiring."
             Timber.w(_lastError.value)
+            connect()
             return false
         }
         val details = _productDetails.value.find { it.productId == productId }
-            ?: _productDetails.value.firstOrNull()
         if (details == null) {
-            _lastError.value = "Mahsulot topilmadi ($productId). Play Console da yarating."
+            _lastError.value = "Mahsulot topilmadi ($productId). Play Console da yaratilganini tekshiring."
             Timber.w(_lastError.value)
             return false
         }
@@ -248,7 +321,7 @@ object BillingManager : PurchasesUpdatedListener {
             .build()
         val result = bc.launchBillingFlow(activity, flowParams)
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-            _lastError.value = "Flow: ${result.debugMessage}"
+            _lastError.value = "Xarid oynasi ochilmadi: ${result.debugMessage}"
             Timber.w(_lastError.value)
             return false
         }

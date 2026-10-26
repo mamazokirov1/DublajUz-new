@@ -4,21 +4,32 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// ---- Reklama ID lari: release uchun CI Secrets yoki -P parametr orqali beriladi.
+// Berilmasa Google TEST ID lari ishlatiladi (daromad bo'lmaydi, lekin xavfsiz).
+val adTestApp = "ca-app-pub-3940256099942544~3347511713"
+val adTestBanner = "ca-app-pub-3940256099942544/6300978111"
+val adTestInter = "ca-app-pub-3940256099942544/1033173712"
+fun adProp(name: String, env: String): String? =
+    ((project.findProperty(name) as String?) ?: System.getenv(env))?.trim()?.takeIf { it.isNotEmpty() }
+val admobAppId = adProp("admobAppId", "ADMOB_APP_ID") ?: adTestApp
+val admobBanner = adProp("admobBanner", "ADMOB_BANNER_ID") ?: adTestBanner
+val admobInter = adProp("admobInterstitial", "ADMOB_INTERSTITIAL_ID") ?: adTestInter
+
 android {
     namespace = "uz.dublaj"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "uz.dublaj"
         minSdk = 26
-        targetSdk = 35
-        // CI: -PbuildNumber=<run_number>; yangilanish tekshiruvi shu raqamga tayanadi
+        targetSdk = 36
+        // CI: -PbuildNumber=<run_number>; versionCode har build'da oshib boradi (Play talabi)
         val buildNumber = (project.findProperty("buildNumber") as String?)?.toIntOrNull() ?: 4
         versionCode = buildNumber
         versionName = "0.4.$buildNumber"
-        // CI: -PgithubRepo=<owner/repo> — yangilanish tekshiruvi aynan shu repodan reliz qidiradi
+        // CI: -PgithubRepo=<owner/repo> — faqat debug (test) APK yangilanish tekshiruvi uchun
         val githubRepo = (project.findProperty("githubRepo") as String?)?.takeIf { it.isNotBlank() }
-            ?: "mamazokirov1/DublajUz"
+            ?: "mamazokirov1/DublajUz-new"
         buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -30,14 +41,15 @@ android {
     }
 
     signingConfigs {
-        // Doimiy kalit: har bir build bir xil imzo bilan chiqadi -> APK ustidan yangilanadi,
-        // ilovani o'chirmasdan o'rnatsa bo'ladi (modellar saqlanadi).
+        // FAQAT debug (test) APK uchun doimiy kalit: har build bir xil imzo -> APK ustidan yangilanadi.
+        // Bu kalit repoda ochiq turadi, shuning uchun Play Market uchun HECH QACHON ishlatilmaydi.
         create("dublaj") {
             storeFile = file("dublaj-sign.keystore")
             storePassword = "android"
             keyAlias = "dublaj"
             keyPassword = "android"
         }
+        // Play Market uchun upload key: CI Secrets (KEYSTORE_B64 ...) orqali beriladi.
         create("release") {
             val ks = System.getenv("KEYSTORE_FILE")
             if (!ks.isNullOrBlank() && file(ks).exists()) {
@@ -58,15 +70,29 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // O'z keystore bo'lmasa doimiy 'dublaj' kalit bilan imzolanadi -> APK o'rnatiladi
-            signingConfig = if (System.getenv("KEYSTORE_FILE").isNullOrBlank())
-                signingConfigs.getByName("dublaj")
-            else
-                signingConfigs.getByName("release")
+            // Upload key berilmasa release imzosiz chiqadi (ochiq kalit bilan imzolanmaydi)
+            val ks = System.getenv("KEYSTORE_FILE")
+            if (!ks.isNullOrBlank() && file(ks).exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            manifestPlaceholders["admobAppId"] = admobAppId
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBanner\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$admobInter\"")
+            // Play uchun: o'zini yangilash, bepul "test Pro" va server ovozi O'CHIQ
+            buildConfigField("boolean", "SELF_UPDATE", "false")
+            buildConfigField("boolean", "ALLOW_TEST_UNLOCK", "false")
+            buildConfigField("boolean", "CLOUD_TTS", "false")
         }
         debug {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("dublaj")
+            // Test APK: har doim Google test reklamalari
+            manifestPlaceholders["admobAppId"] = adTestApp
+            buildConfigField("String", "ADMOB_BANNER_ID", "\"$adTestBanner\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$adTestInter\"")
+            buildConfigField("boolean", "SELF_UPDATE", "true")
+            buildConfigField("boolean", "ALLOW_TEST_UNLOCK", "true")
+            buildConfigField("boolean", "CLOUD_TTS", "true")
         }
     }
 
@@ -119,8 +145,8 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    // ONNX Runtime — VITS TTS
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
+    // ONNX Runtime — VITS TTS (1.22.0+ : 16 KB sahifa hajmiga mos .so)
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
 
     // Whisper.cpp prebuilt AAR (no NDK)
     implementation("dev.ffmpegkit-maintained:whisper-android:1.0.0")
@@ -131,8 +157,11 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
 
     // ---- Monetizatsiya (Play Market)
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
+    // Billing 8.x — Play 2026-08-31 dan boshlab 7.x ni qabul qilmaydi
+    implementation("com.android.billingclient:billing:8.0.0")
     implementation("com.google.android.gms:play-services-ads:23.5.0")
+    // Reklama roziligi (GDPR / EEA)
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

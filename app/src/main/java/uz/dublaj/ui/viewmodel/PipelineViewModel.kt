@@ -425,6 +425,35 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
+    /** O'zbekcha ovoz modelini internetdan (GitHub Release) yuklaydi. */
+    fun downloadVits(context: Context) {
+        val app = context.applicationContext
+        launchModelTask(app, "O'zbekcha ovoz yuklanmoqda…") {
+            pipeline.downloadVits(app) { d, t ->
+                _modelStatus.value = "Ovoz: ${mb(d)} / ${if (t > 0) mb(t) else "?"}"
+            }
+        }
+    }
+
+    /** Yetishmayotgan hamma komponentni (matn aniqlash + ovoz) bir bosishda yuklaydi. */
+    fun downloadMissing(context: Context) {
+        val app = context.applicationContext
+        val id = _config.value.whisperModel
+        launchModelTask(app, "Komponentlar yuklanmoqda…") {
+            val m = pipeline.modelsInfo(app, _config.value)
+            if (!m.whisper) {
+                pipeline.downloadWhisper(app, id) { d, t ->
+                    _modelStatus.value = "Matn aniqlash: ${mb(d)} / ${if (t > 0) mb(t) else "?"}"
+                }
+            }
+            if (!m.vits) {
+                pipeline.downloadVits(app) { d, t ->
+                    _modelStatus.value = "Ovoz: ${mb(d)} / ${if (t > 0) mb(t) else "?"}"
+                }
+            }
+        }
+    }
+
     /** Sozlamalardagi "Kalitni tekshirish" tugmasi. */
     fun testGemini() {
         val cfg = _config.value
@@ -579,6 +608,7 @@ class PipelineViewModel : ViewModel() {
 
     /** manual = true: foydalanuvchi o'zi bosdi (natija har doim ko'rsatiladi). */
     fun checkUpdate(context: Context, manual: Boolean) {
+        if (!uz.dublaj.BuildConfig.SELF_UPDATE) return   // Play (release): yangilanishni faqat Google Play beradi
         val app = context.applicationContext
         if (!manual && !UpdateChecker.shouldAutoCheck(app)) return
         viewModelScope.launch {

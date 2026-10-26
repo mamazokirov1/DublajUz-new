@@ -32,8 +32,12 @@ class PipelineService : Service() {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Dublyaj ishlamoqda…"
         val notification = buildNotification(text)
         try {
-            val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0
+            val type = when {
+                // Android 15+: video/audio qayta ishlash uchun mo'ljallangan tur
+                Build.VERSION.SDK_INT >= 35 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                else -> 0
+            }
             ServiceCompat.startForeground(this, NOTIF_ID, notification, type)
         } catch (e: Exception) {
             Timber.w(e, "startForeground")
@@ -48,6 +52,12 @@ class PipelineService : Service() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    /** Android 15+: tizim foreground-servis vaqt limitiga yetganda chaqiriladi — servisni to'xtatamiz. */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        Timber.w("Foreground servis vaqt limiti (type=$fgsType)")
+        stopSelf()
     }
 
     override fun onDestroy() {

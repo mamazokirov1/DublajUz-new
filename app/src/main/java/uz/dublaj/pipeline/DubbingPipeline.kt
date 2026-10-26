@@ -89,6 +89,12 @@ class DubbingPipeline {
         ) { d, t -> checkCancelled(); onProgress(d, t) }
     }
 
+    /** O'zbekcha ovoz modelini (GitHub Release) yuklaydi. */
+    fun downloadVits(context: Context, onProgress: (Long, Long) -> Unit) {
+        val dir = ensure(context)
+        uz.dublaj.tts.VitsDownloader.download(dir) { d, t -> checkCancelled(); onProgress(d, t) }
+    }
+
     fun importWhisper(context: Context, uri: Uri, modelId: String) {
         val dir = ensure(context)
         val wi = WhisperRecognizer.info(modelId)
@@ -353,9 +359,20 @@ class DubbingPipeline {
                     val slot = maxOf(u.end - u.start, (nextStart ?: (u.end + 1.5)) - u.start)
                     GeminiTranslator.Item(u.id, u.text, (slot * GeminiTranslator.CHARS_PER_SEC).toInt().coerceAtLeast(20))
                 }
+                // oldingi 3 gapning tarjimasi — kontekst sifatida; keyingi gap — maslahat
+                val ctxPairs = ArrayList<Pair<String, String>>()
+                for (k in maxOf(0, idx - 3) until idx) {
+                    val prev = online[src[k].id]
+                    if (prev != null) ctxPairs.add(src[k].text to prev.uz)
+                }
+                val srcLang = chunk.firstOrNull()?.language ?: "en"
+                val nextHint = src.getOrNull(idx + chunk.size)?.text
                 val got: Map<Int, GeminiTranslator.Result> = try {
                     gem.translateChunk(
+                        srcLang,
+                        ctxPairs,
                         items,
+                        nextHint,
                         GeminiTranslator.Style(config.videoContext, config.addressForm, config.tone, config.glossary)
                     )
                 } catch (e: GeminiTranslator.GeminiException) {
@@ -377,8 +394,8 @@ class DubbingPipeline {
         for (u in src) {
             checkCancelled()
             val g = online[u.id]
-            if (g != null && g.text.isNotBlank()) {
-                val uz = norm.normalize(g.text)
+            if (g != null && g.uz.isNotBlank()) {
+                val uz = norm.normalize(g.uz)
                 val qa = TranslationQa.issue(u.text, uz)
                 if (qa != null) {
                     flagged++
@@ -386,7 +403,7 @@ class DubbingPipeline {
                 }
                 val alts = ArrayList<String>()
                 alts.add(uz)
-                for (a in g.alts) {
+                for (a in listOfNotNull(g.short)) {
                     val n = norm.normalize(a)
                     if (n.isNotBlank() && n !in alts) alts.add(n)
                 }

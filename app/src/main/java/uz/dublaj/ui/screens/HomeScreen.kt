@@ -377,9 +377,17 @@ fun HomeScreen(
                     )
                     if (!ttsOk) {
                         Text(
-                            "O'zbekcha ovoz fayllari kerak (Sozlamalar bo'limida qo'shing yoki Chatterbox serverini ulang).",
+                            "O'zbekcha ovoz komponenti kerak. Yuklash uchun internet (Wi-Fi tavsiya) kerak.",
                             style = MaterialTheme.typography.bodySmall, color = cs.tertiary
                         )
+                        Button(
+                            onClick = { vm.downloadMissing(context) },
+                            enabled = !busy,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Komponentlarni yuklash") }
+                        modelStatus?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                        }
                     }
                     TextButton(onClick = onSettings) {
                         Icon(Icons.Default.GraphicEq, null, modifier = Modifier.size(18.dp))
@@ -461,10 +469,13 @@ fun HomeScreen(
                 val launched = act != null && uz.dublaj.monetization.BillingManager.launchPurchase(act)
                 if (launched) {
                     vm.toast("Xarid oynasi ochildi…")
-                } else {
+                } else if (uz.dublaj.BuildConfig.ALLOW_TEST_UNLOCK) {
+                    // Faqat test APK (debug)
                     uz.dublaj.monetization.BillingManager.setProLocal(context, true)
                     vm.setConfig(config.copy(isPro = true))
                     vm.toast("Pro test rejimida ochildi (Play Billing mahsuloti yo'q yoki ulanmagan)")
+                } else {
+                    vm.toast(uz.dublaj.monetization.BillingManager.lastError.value ?: "Xarid hozir mavjud emas. Keyinroq urinib ko'ring.")
                 }
             },
             onDismiss = { showProDialog = false }

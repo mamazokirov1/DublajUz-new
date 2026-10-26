@@ -89,7 +89,7 @@ data class AppConfig(
     val isPro: Boolean = false
 ) {
     /** Chatterbox tanlangan va server manzili kiritilgan. */
-    val chatterboxReady: Boolean get() = ttsEngine == "chatterbox" && cbUrl.isNotBlank()
+    val chatterboxReady: Boolean get() = uz.dublaj.BuildConfig.CLOUD_TTS && ttsEngine == "chatterbox" && cbUrl.isNotBlank()
 
     /** Onlayn tarjima yoqilgan va kalit kiritilgan. */
     val onlineReady: Boolean get() = onlineTranslate && geminiKey.isNotBlank()

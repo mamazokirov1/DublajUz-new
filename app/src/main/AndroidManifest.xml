@@ -4,6 +4,8 @@
     <!-- Video tanlash SAF (GetContent) orqali: saqlash ruxsatlari kerak emas -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 15+: video qayta ishlash (STT/TTS/mux). Android 10–14 da dataSync ishlatiladi. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -11,7 +13,7 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-    <!-- AdMob (ixtiyoriy, lekin tavsiya) -->
+    <!-- AdMob reklama identifikatori (Play Console > Data safety da e'lon qiling) -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <application
@@ -23,12 +25,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DublajUz"
         android:largeHeap="true"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="true">
 
-        <!-- Google test App ID. Play ga chiqarishdan oldin o'z AdMob App ID ga almashtiring. -->
+        <!-- AdMob App ID build'dan keladi (app/build.gradle.kts: debug = test ID, release = Secrets/ test) -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="${admobAppId}" />
 
         <activity
             android:name=".MainActivity"
@@ -52,7 +55,7 @@
         <service
             android:name=".service.PipelineService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|mediaProcessing" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

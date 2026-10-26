@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write   # faqat tag'dan GitHub Release yaratish uchun
+  contents: write   # GitHub Release yaratish uchun
 
 jobs:
   build:
@@ -21,6 +21,10 @@ jobs:
     timeout-minutes: 60
     env:
       KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+      # AdMob (ixtiyoriy): berilmasa release ham Google TEST reklamalari bilan chiqadi
+      ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+      ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
+      ADMOB_INTERSTITIAL_ID: ${{ secrets.ADMOB_INTERSTITIAL_ID }}
 
     steps:
       - name: Checkout
@@ -35,16 +39,21 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
-      # Repodagi gradle-wrapper.jar o'rniga rasmiy Gradle 8.9 ishlatiladi
+      # Repodagi gradle-wrapper.jar o'rniga rasmiy Gradle ishlatiladi (AGP 8.9.1 uchun 8.11.1 kerak)
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
+          gradle-version: "8.11.1"
 
+      # ---------------------------------------------------------------- TEST APK (debug)
       - name: Build Debug APK
         run: gradle assembleDebug -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
 
-      # Kvota to'lsa ham build yiqilmasin (APK baribir Releases'ga yuklanadi)
+      # Play 16 KB talabi: natija logda ko'rinadi (build yiqilmaydi, faqat ogohlantiradi)
+      - name: Check 16 KB page size (debug APK)
+        continue-on-error: true
+        run: python3 tools/check_16kb.py app/build/outputs/apk/debug/*.apk
+
       - name: Upload Debug APK
         continue-on-error: true
         uses: actions/upload-artifact@v4
@@ -54,41 +63,7 @@ jobs:
           retention-days: 1
           overwrite: true
 
-      # Ixtiyoriy: Secrets ga KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD qo'shsangiz
-      # release o'z kalitingiz bilan imzolanadi. Aks holda debug kalit bilan imzolanadi (o'rnatsa bo'ladi).
-      - name: Decode keystore
-        if: env.KEYSTORE_B64 != ''
-        run: |
-          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-
-      - name: Build Release APK
-        continue-on-error: true
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle assembleRelease -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
-
-      - name: Upload Release APK
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: DublajUz-release-apk
-          path: app/build/outputs/apk/release/*.apk
-          if-no-files-found: ignore
-          retention-days: 1
-          overwrite: true
-
-      - name: Publish GitHub Release (tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/debug/*.apk
-
-      # Har bir push'dan keyin yangi reliz: ilova ichidagi "yangilanish tekshiruvi" shuni o'qiydi
+      # Har bir push'dan keyin yangi test reliz (debug APK): test APK ichidagi "yangilanish tekshiruvi" shuni o'qiydi
       - name: Prepare APK for release
         if: github.event_name != 'pull_request' && !startsWith(github.ref, 'refs/tags/')
         run: |
@@ -100,9 +75,53 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: DublajUz 0.4.${{ github.run_number }}
+          name: DublajUz 0.4.${{ github.run_number }} (test)
           body: ${{ github.event.head_commit.message }}
           target_commitish: ${{ github.sha }}
           make_latest: true
           files: DublajUz.apk
           fail_on_unmatched_files: true
+
+      # ---------------------------------------------------------------- PLAY (release AAB)
+      # Faqat Secrets (KEYSTORE_B64 ...) qo'shilgan bo'lsa ishlaydi. Xato bo'lsa ish QIZIL bo'ladi.
+      - name: Release skipped (no upload key)
+        if: env.KEYSTORE_B64 == ''
+        run: echo "::notice::Play uchun release (AAB) yig'ilmadi — Secrets ga KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD qo'shing (tools/make_upload_key.sh)."
+
+      - name: Decode upload keystore
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+
+      - name: Build Release AAB + APK
+        if: env.KEYSTORE_B64 != ''
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: gradle bundleRelease assembleRelease -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
+
+      - name: Check 16 KB page size (release APK)
+        if: env.KEYSTORE_B64 != ''
+        continue-on-error: true
+        run: python3 tools/check_16kb.py app/build/outputs/apk/release/*.apk
+
+      - name: Upload Release AAB (Play Console ga yuklang)
+        if: env.KEYSTORE_B64 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: DublajUz-release-aab
+          path: app/build/outputs/bundle/release/*.aab
+          retention-days: 14
+          overwrite: true
+
+      - name: Upload Release APK (Play'ga o'xshash test)
+        if: env.KEYSTORE_B64 != ''
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: DublajUz-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
+          overwrite: true

@@ -2,7 +2,6 @@ package uz.dublaj
 
 import android.app.Application
 import timber.log.Timber
-import uz.dublaj.monetization.AdsManager
 import uz.dublaj.monetization.BillingManager
 
 class DublajApp : Application() {
@@ -12,7 +11,7 @@ class DublajApp : Application() {
             Timber.plant(Timber.DebugTree())
         }
         uz.dublaj.util.CrashLogger.install(this)
-        AdsManager.init(this)
+        // AdsManager.init — rozilikdan keyin MainActivity'da (ConsentManager)
         BillingManager.start(this)
     }
 }

@@ -20,7 +20,7 @@ import com.google.android.gms.ads.AdView
 @Composable
 fun BannerAd(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    if (!AdsManager.shouldShowAds(context)) return
+    if (!AdsManager.shouldShowAds(context) || !AdsManager.adsReady) return
 
     AndroidView(
         modifier = modifier

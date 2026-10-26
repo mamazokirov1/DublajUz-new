@@ -419,10 +419,7 @@ fun ProBenefitsDialog(
     data class Benefit(val icon: ImageVector, val title: String, val desc: String)
     val benefits = listOf(
         Benefit(Icons.Default.AllInclusive, "Cheksiz dublyaj", "Kunlik limit yo'q — istalgancha video"),
-        Benefit(Icons.Default.Block, "Reklamasiz", "Banner va interstitial ko'rinmaydi"),
-        Benefit(Icons.Default.RecordVoiceOver, "Yaxshiroq ovoz", "Chatterbox va qo'shimcha ovozlar"),
-        Benefit(Icons.Default.Bolt, "Prioritet", "Navbat va batch ishlov berish"),
-        Benefit(Icons.Default.SupportAgent, "Qo'llab-quvvatlash", "Muammolarni tezroq hal qilish")
+        Benefit(Icons.Default.Block, "Reklamasiz", "Banner va to'liq ekran reklamalar ko'rinmaydi")
     )
 
     AlertDialog(

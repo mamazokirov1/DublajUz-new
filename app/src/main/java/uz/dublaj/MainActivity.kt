@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
             uz.dublaj.ui.theme.ThemeSettings.dynamic = it.dynamicColor
         }
         handleIntent(intent)
+        uz.dublaj.monetization.ConsentManager.gatherAndInit(this)
         addOnNewIntentListener { handleIntent(it) }
         setContent {
             DublajTheme {

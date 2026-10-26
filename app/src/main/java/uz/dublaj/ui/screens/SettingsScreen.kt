@@ -189,7 +189,7 @@ fun SettingsScreen(
                             color = cs.onSurfaceVariant
                         )
                         Text(
-                            "Pro afzalliklari: cheksiz video, reklama yo'q, priorit navbat, yaxshiroq ovoz (Chatterbox).",
+                            "Pro afzalliklari: cheksiz dublyaj va reklamasiz foydalanish.",
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant
                         )
@@ -202,10 +202,10 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Pro ga o'tish")
                         }
-                    } else {
+                    } else if (uz.dublaj.BuildConfig.ALLOW_TEST_UNLOCK) {
                         OutlinedButton(
                             onClick = {
-                                // Test / debug: Pro ni o'chirish (faqat development)
+                                // Test / debug: Pro ni o'chirish (faqat test APK)
                                 BillingManager.setProLocal(context, false)
                                 vm.setConfig(config.copy(isPro = false))
                                 vm.toast("Pro o'chirildi (test)")
@@ -337,7 +337,7 @@ fun SettingsScreen(
             }
 
             // ---------------- ovoz: Chatterbox (server) va klonlash — faqat ilg'or rejimda (tajriba)
-            if (expert) {
+            if (expert && uz.dublaj.BuildConfig.CLOUD_TTS) {
             var showCbToken by remember { mutableStateOf(false) }
             SectionCard(
                 icon = Icons.Default.Mic,
@@ -493,7 +493,8 @@ fun SettingsScreen(
 
                 HorizontalDivider()
                 Text("O'zbekcha ovoz", style = MaterialTheme.typography.titleMedium)
-                Text("Tarjimani o'zbekcha o'qiydigan ikki fayl: ovoz fayli (.onnx) va uning sozlama fayli (.json).", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text("Tarjimani o'zbekcha o'qiydigan ikki fayl: ovoz fayli (.onnx) va uning sozlama fayli (.json). Internetdan yuklash tavsiya etiladi (Wi-Fi bilan).", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Button(onClick = { vm.downloadVits(context) }, enabled = !busy) { Text("Ovozni internetdan yuklash") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vitsPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Ovoz fayli (.onnx)") }
                     OutlinedButton(onClick = { vitsCfgPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Sozlama fayli (.json)") }
@@ -801,31 +802,40 @@ fun SettingsScreen(
                 title = "Ilova haqida",
                 subtitle = "Versiya ${UpdateChecker.currentVersionName(context)}"
             ) {
-                Button(onClick = { vm.checkUpdate(context, manual = true) }, shape = MaterialTheme.shapes.medium) {
-                    Icon(Icons.Default.SystemUpdate, null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Yangilanishni tekshirish")
-                }
-                updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
-                availableUpdate?.let { u ->
-                    Button(
-                        onClick = { vm.downloadUpdate(context) },
-                        enabled = updateProgress == null,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Icon(Icons.Default.Download, null)
+                if (uz.dublaj.BuildConfig.SELF_UPDATE) {
+                    Button(onClick = { vm.checkUpdate(context, manual = true) }, shape = MaterialTheme.shapes.medium) {
+                        Icon(Icons.Default.SystemUpdate, null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Yuklab olish va o'rnatish (${u.versionName})")
+                        Text("Yangilanishni tekshirish")
                     }
+                    updateMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
+                    availableUpdate?.let { u ->
+                        Button(
+                            onClick = { vm.downloadUpdate(context) },
+                            enabled = updateProgress == null,
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Icon(Icons.Default.Download, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Yuklab olish va o'rnatish (${u.versionName})")
+                        }
+                    }
+                    updateProgress?.let { p ->
+                        LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+                        Text("${(p * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                    }
+                    Text(
+                        "Yangi versiya chiqsa, ilova ochilganda kuniga bir marta o'zi xabar beradi.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
                 }
-                updateProgress?.let { p ->
-                    LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
-                    Text("${(p * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                val actCtx = context as? Activity
+                if (actCtx != null && uz.dublaj.monetization.ConsentManager.privacyOptionsRequired(context)) {
+                    OutlinedButton(
+                        onClick = { uz.dublaj.monetization.ConsentManager.showPrivacyOptions(actCtx) },
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Reklama maxfiyligi sozlamalari") }
                 }
-                Text(
-                    "Yangi versiya chiqsa, ilova ochilganda kuniga bir marta o'zi xabar beradi.",
-                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
-                )
             }
 
             Spacer(Modifier.navigationBarsPadding().height(16.dp))
@@ -842,11 +852,13 @@ fun SettingsScreen(
                 val launched = act != null && BillingManager.launchPurchase(act)
                 if (launched) {
                     vm.toast("Xarid oynasi ochildi…")
-                } else {
-                    // Debug / sideload: Play Billing yo'q bo'lsa test Pro
+                } else if (uz.dublaj.BuildConfig.ALLOW_TEST_UNLOCK) {
+                    // Faqat test APK (debug): Play Billing yo'q bo'lsa test Pro
                     BillingManager.setProLocal(context, true)
                     vm.setConfig(config.copy(isPro = true))
                     vm.toast("Pro test rejimida ochildi (Play Billing mahsuloti yo'q yoki ulanmagan)")
+                } else {
+                    vm.toast(BillingManager.lastError.value ?: "Xarid hozir mavjud emas. Keyinroq urinib ko'ring.")
                 }
             },
             onDismiss = { showProDialog = false }

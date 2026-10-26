@@ -4,29 +4,33 @@ Offline o'zbekcha video dublyaj: **Whisper (STT) → Gemini (tarjima) → tahrir
 
 Matn aniqlash va ovoz sintezi telefonda offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (internet).
 
-## Play Marketga joylashga tayyorlash
+## Ikki xil build
 
-- NLLB (CC-BY-NC) olib tashlandi — tijoriy foydalanish mumkin.
-- MANAGE_EXTERNAL_STORAGE va REQUEST_INSTALL_PACKAGES olib tashlandi (Play cheklovlari).
-- Tarjima faqat Gemini orqali (onlayn).
-- Privacy Policy, Data Safety formasi, kontent reytingi va boshqa Play Console talablarini to'ldirish kerak.
+| | Test APK (`debug`) | Play (`release` / AAB) |
+|---|---|---|
+| Qayerdan | GitHub Releases / Actions artifact | Actions artifact `DublajUz-release-aab` |
+| Imzo | doimiy ochiq test kaliti (APK ustidan yangilanadi) | **sizning upload key** (Secrets) |
+| Reklama | Google test reklamalari | haqiqiy ID (Secrets) yoki test |
+| O'zini yangilash (GitHub) | bor | **yo'q** (Play siyosati) |
+| "Test Pro" tugmasi | bor | **yo'q** — Pro faqat haqiqiy xariddan |
+| Server (Chatterbox) ovozi | bor (tajriba) | **yo'q** |
+
+Batafsil Play qadamlari: **PLAY_CHECKLIST.md**. Maxfiylik siyosati: `PRIVACY.md` (+ `docs/index.html` — GitHub Pages uchun).
 
 ## GitHub'da APK yig'ish
 1. Loyihani GitHub repo'ga push qiling (`main` yoki `master`).
 2. **Actions → Build APK** ishga tushadi (yoki *Run workflow*).
-3. Tugagach: run sahifasi → **Artifacts → DublajUz-debug-apk** (zip) → ichidagi APK'ni telefonga o'rnating.
-4. `v0.3.0` kabi tag push qilsangiz, APK **Releases** sahifasiga ham chiqadi.
+3. Test APK: **Releases → eng yangi `build-N`** → `DublajUz.apk` (yoki run sahifasi → Artifacts → `DublajUz-debug-apk`).
+4. Run logida **"Check 16 KB page size"** qadami Play'ning 16 KB talabini tekshiradi.
+5. Play uchun: Secrets (`KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`; ixtiyoriy `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`) qo'shilgach, shu workflow **AAB** ham yig'adi.
 
-CI repodagi `gradle-wrapper.jar` ni ishlatmaydi — rasmiy Gradle 8.9 o'rnatadi.
-
-Ixtiyoriy (o'z kalitingiz bilan imzolash): repo *Secrets*ga `KEYSTORE_B64` (base64 keystore),
-`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` qo'shing. Bo'lmasa release APK debug kalit bilan imzolanadi.
+CI repodagi `gradle-wrapper.jar` ni ishlatmaydi — rasmiy Gradle 8.11.1 o'rnatadi (AGP 8.9.1, compileSdk/targetSdk 36).
 
 ## Birinchi ishga tushirish (telefonda)
 **Sozlamalar** ekranida:
 - **Whisper**: model tanlang (base tavsiya) → *Yuklash* (yoki `ggml-*.bin` ni import).
 - **Gemini**: Onlayn tarjima yoqing va Google AI Studio'dan olingan API kalitini kiriting.
-- **VITS**: `vits_uzbek.onnx` va `uz_tts_base.json` ni import qiling.
+- **VITS**: "Ovozni internetdan yuklash" (reliz `models-v1` dan) yoki `vits_uzbek.onnx` va `uz_tts_base.json` ni qo'lda import qiling. Reliz yaratish: `tools/publish_models.sh`.
 - **Video tili**: Ru/En dan boshqa tillar uchun tilni aniq tanlang.
 
 So'ng: video tanlang → *Transkript + tarjima* → tahrirlang → *Tasdiqlash* → *Dublyaj qilish*.
@@ -61,6 +65,7 @@ Natijani *Ko'rish / Ulashish / Galereyaga saqlash* mumkin.
 
 ## Versiya
 0.4.x (NLLB olib tashlangan, Play Market tayyorlash)
+- billing_v8: targetSdk 36, Billing 8, UMP roziligi, o'zini yangilash va test-Pro faqat debug, upload key CI orqali, 16 KB tekshiruvi
 
 ## Keyingi qadamlar (Play Market + daromad)
 
