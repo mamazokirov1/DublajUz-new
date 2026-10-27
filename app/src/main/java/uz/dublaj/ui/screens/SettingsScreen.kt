@@ -183,7 +183,7 @@ fun SettingsScreen(
                 UsageStore.remainingDubs(context, isPro)
             }
             val dubsToday = remember(workVersion) { UsageStore.dubsToday(context) }
-            val minsToday = remember(workVersion) { UsageStore.minutesToday(context) }
+            val bonusNow = remember(workVersion) { UsageStore.bonusCredits(context) }
             Card(
                 Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -205,7 +205,7 @@ fun SettingsScreen(
                             )
                             Text(
                                 if (isPro) "Cheksiz dublyaj • reklamasiz"
-                                else "Kuniga ${UsageStore.FREE_DAILY_DUBS} ta video / ~${UsageStore.FREE_DAILY_MINUTES} daqiqa",
+                                else "Kuniga ${UsageStore.FREE_DAILY_DUBS} ta video • har biri ${UsageStore.FREE_MAX_VIDEO_MINUTES} daqiqagacha",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = cs.onSurfaceVariant
                             )
@@ -231,12 +231,12 @@ fun SettingsScreen(
                             trackColor = cs.surfaceVariant,
                         )
                         Text(
-                            "Bugun: $dubsToday / ${UsageStore.FREE_DAILY_DUBS} video • $minsToday daqiqa ishlatildi • qoldi: $remaining",
+                            "Bugun: $dubsToday / ${UsageStore.FREE_DAILY_DUBS} video • reklama bilan yig'ilgan: $bonusNow • qoldi: $remaining",
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant
                         )
                         Text(
-                            "Pro afzalliklari: cheksiz dublyaj va reklamasiz foydalanish.",
+                            "Pro afzalliklari: cheksiz dublyaj, video uzunligi cheklanmaydi (bepulda ${UsageStore.FREE_MAX_VIDEO_MINUTES} daqiqa), reklamasiz.",
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant
                         )

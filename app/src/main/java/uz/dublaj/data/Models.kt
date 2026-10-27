@@ -159,3 +159,11 @@ data class QueueItem(
     val message: String = "",
     val outputPath: String? = null
 )
+
+/** Pro'ga chorlovchi holatlar (UI dialog ko'rsatadi). */
+sealed class ProPrompt {
+    /** Bepul versiyada video juda uzun. */
+    data class TooLong(val minutes: Int) : ProPrompt()
+    /** Kunlik bepul imkoniyatlar tugadi. */
+    data object LimitReached : ProPrompt()
+}

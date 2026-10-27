@@ -1,4 +1,4 @@
-# DublajUz (Android)Shoirjon
+# DublajUz (Android)
 
 Offline o'zbekcha video dublyaj: **Whisper (STT) → AI tarjima (Gemini, OpenAI/ChatGPT, Claude, DeepSeek, Groq, OpenRouter, Mistral yoki o'zingizning OpenAI-mos serveringiz) → tahrir → VITS (o'zbek TTS) → MP4**.
 

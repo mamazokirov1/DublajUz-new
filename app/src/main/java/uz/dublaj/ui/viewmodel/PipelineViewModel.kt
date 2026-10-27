@@ -172,6 +172,7 @@ class PipelineViewModel : ViewModel() {
             rawText.take(limit)
         } else rawText
         if (text.isBlank()) { toast("Avval matn kiriting"); return }
+        if (UsageStore.canDub(app, _config.value.isPro) != null) { showLimitPrompt(); return }
         if (isBusy) { toast("Hozir boshqa jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
         if (!_models.value.vits) { toast("Avval Sozlamalarda o'zbekcha ovoz fayllarini qo'shing"); return }
         releasePreview()
@@ -185,6 +186,7 @@ class PipelineViewModel : ViewModel() {
             }
             _audioResult.value = f
             _state.value = PipelineState.Idle
+            if (!cfg.isPro) UsageStore.recordWork(app)
             if (cfg.autoSaveAudio && cfg.isPro) {
                 try { withContext(Dispatchers.IO) { uz.dublaj.util.OutputUtils.saveAudioToMusic(app, f) } } catch (_: Exception) { }
             }
@@ -314,6 +316,24 @@ class PipelineViewModel : ViewModel() {
         super.onCleared()
     }
 
+    private val _proPrompts = MutableSharedFlow<uz.dublaj.data.ProPrompt>(extraBufferCapacity = 4)
+    /** Pro'ga chorlovchi dialoglar (video uzun / limit tugagan). Barcha ekranlarda ko'rsatiladi. */
+    val proPrompts: SharedFlow<uz.dublaj.data.ProPrompt> = _proPrompts.asSharedFlow()
+    fun showLimitPrompt() { _proPrompts.tryEmit(uz.dublaj.data.ProPrompt.LimitReached) }
+
+    /** Video davomiyligi (ms); o'qib bo'lmasa null. */
+    private fun videoDurationMs(app: Context, uri: Uri): Long? {
+        val r = android.media.MediaMetadataRetriever()
+        return try {
+            r.setDataSource(app, uri)
+            r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+        } catch (e: Exception) {
+            null
+        } finally {
+            try { r.release() } catch (_: Exception) { }
+        }
+    }
+
     fun setVideo(uri: Uri) {
         if (isBusy) return
         _videoUri.value = uri
@@ -321,6 +341,17 @@ class PipelineViewModel : ViewModel() {
         _translationUnits.value = emptyList()
         _approved.value = false
         _state.value = PipelineState.Idle
+        // Bepul versiyada bitta video 15 daqiqadan oshmasligi kerak
+        val app = appCtx
+        if (app != null && !_config.value.isPro) {
+            viewModelScope.launch {
+                val ms = withContext(Dispatchers.IO) { videoDurationMs(app, uri) }
+                if (ms != null && ms > UsageStore.FREE_MAX_VIDEO_MINUTES * 60_000L && _videoUri.value == uri) {
+                    _videoUri.value = null
+                    _proPrompts.tryEmit(uz.dublaj.data.ProPrompt.TooLong(kotlin.math.ceil(ms / 60000.0).toInt()))
+                }
+            }
+        }
     }
 
     fun resetState() {
@@ -423,7 +454,7 @@ class PipelineViewModel : ViewModel() {
         val limitMsg = UsageStore.canDub(context, cfg0.isPro, estMin)
         if (limitMsg != null) {
             _state.value = PipelineState.Error(limitMsg)
-            toast(limitMsg)
+            showLimitPrompt()
             return
         }
         releasePreview()
@@ -439,7 +470,7 @@ class PipelineViewModel : ViewModel() {
             }
             // Free limit hisobi
             val dur = units.lastOrNull()?.end ?: 60.0
-            UsageStore.recordDub(app, dur)
+            if (!cfg.isPro) UsageStore.recordDub(app, dur)
             _state.value = PipelineState.Success(out.absolutePath)
             toast("Dublyaj tayyor ✓")
             PipelineService.notifyDone(app, "Dublyaj tayyor", title.ifBlank { "Video dublyaj qilindi" })
@@ -451,6 +482,11 @@ class PipelineViewModel : ViewModel() {
     /** Matn ajratish + tarjima; keyin foydalanuvchi tahrir qiladi. */
     fun transcribeAndTranslate(context: Context) {
         val uri = _videoUri.value ?: return
+        // Limit tugagan bo'lsa AI so'rovlarini behuda sarflamaymiz
+        if (UsageStore.canDub(context, _config.value.isPro) != null) {
+            showLimitPrompt()
+            return
+        }
         launchTask(context, "Matn va tarjima") {
             val cfg = _config.value
             val app = context.applicationContext
@@ -755,8 +791,20 @@ class PipelineViewModel : ViewModel() {
                 picked = picked.take(room)
             }
         }
-        val items = picked.map { QueueItem(id = ++queueSeq, uri = it, name = FileUtils.displayName(app, it)) }
-        _queue.update { it + items }
+        val pro = _config.value.isPro
+        viewModelScope.launch {
+            val ok = ArrayList<Uri>()
+            var longest = 0
+            for (u in picked) {
+                val ms = if (pro) null else withContext(Dispatchers.IO) { videoDurationMs(app, u) }
+                if (ms != null && ms > UsageStore.FREE_MAX_VIDEO_MINUTES * 60_000L) {
+                    longest = maxOf(longest, kotlin.math.ceil(ms / 60000.0).toInt())
+                } else ok.add(u)
+            }
+            if (longest > 0) _proPrompts.tryEmit(uz.dublaj.data.ProPrompt.TooLong(longest))
+            val items = ok.map { QueueItem(id = ++queueSeq, uri = it, name = FileUtils.displayName(app, it)) }
+            _queue.update { it + items }
+        }
     }
 
     fun removeFromQueue(id: Long) {
@@ -800,7 +848,7 @@ class PipelineViewModel : ViewModel() {
                     val limitMsg = UsageStore.canDub(app, cfg.isPro)
                     if (limitMsg != null) {
                         updateItem(item.id) { it.copy(status = QueueStatus.FAILED, message = limitMsg) }
-                        toast(limitMsg)
+                        showLimitPrompt()
                         break
                     }
                     updateItem(item.id) { it.copy(status = QueueStatus.RUNNING, progress = 0f, message = "Boshlanmoqda…") }
@@ -822,7 +870,7 @@ class PipelineViewModel : ViewModel() {
                                 updateItem(item.id) { it.copy(progress = 0.5f + p * 0.5f, message = m) }
                             }.also { autoSave(app, it, cfg) }
                         }
-                        UsageStore.recordDub(app, 60.0)
+                        if (!cfg.isPro) UsageStore.recordDub(app, 60.0)
                         updateItem(item.id) {
                             it.copy(
                                 status = QueueStatus.DONE, progress = 1f, outputPath = out.absolutePath,

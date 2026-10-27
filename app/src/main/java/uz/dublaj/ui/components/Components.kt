@@ -400,7 +400,7 @@ fun ProBenefitsDialog(
     val cs = MaterialTheme.colorScheme
     data class Benefit(val icon: ImageVector, val title: String, val desc: String)
     val benefits = listOf(
-        Benefit(Icons.Default.AllInclusive, "Cheksiz dublyaj", "Kunlik limit yo'q — istalgancha video"),
+        Benefit(Icons.Default.AllInclusive, "Cheksiz dublyaj", "Kunlik limit yo'q va video uzunligi cheklanmaydi (bepulda 15 daqiqagacha)"),
         Benefit(Icons.Default.Block, "Reklamasiz", "Banner va to'liq ekran reklamalar ko'rinmaydi"),
         Benefit(Icons.Default.Queue, "Cheksiz navbat", "Ko'p videoni birdan qo'ying, ular ketma-ket dublyaj bo'ladi (bepulda 2 ta)"),
         Benefit(Icons.Default.RecordVoiceOver, "Uzun matnlarni ovozlashtirish", "TXT fayl yoki matn 200 000 belgigacha (bepulda 1 500)"),
@@ -438,7 +438,7 @@ fun ProBenefitsDialog(
                     )
                 } else {
                     Text(
-                        "Bepulda kuniga $remainingDubs ta video qoldi. Pro bilan hech qanday cheklov yo'q.",
+                        "Bugun $remainingDubs ta bepul imkoniyat qoldi (video 15 daqiqagacha). Pro bilan hech qanday cheklov yo'q.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = cs.onSurfaceVariant
                     )

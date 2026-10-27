@@ -51,3 +51,8 @@
 - **Pro (bir martalik `pro_unlock`):** cheksiz dublyaj, reklamasiz, cheksiz navbat (bepulda 2), uzun matn → ovoz (bepulda 1 500, Pro 200 000 belgi), 5 ta rang mavzusi, ovozni avto-saqlash.
 - **Reklama:** banner barcha ekranlar pastida (Pro da yo'q); interstitial dublyaj tugagach, har natija uchun bir marta.
 - **Test:** App access bo'limida tekshiruvchi uchun test API kalit (yoki Gemini bepul kaliti qo'llanmasi) bering.
+
+## Bepul limitlar va mukofotli reklama (v12)
+- Bepul: kuniga 3 ta dublyaj, **bitta video 15 daqiqagacha**. Uzun video tanlansa Pro'ga undovchi dialog chiqadi.
+- Limit tugagach foydalanuvchi **5 ta mukofotli reklama** ko'rib 1 ta qo'shimcha imkoniyat oladi (`UsageStore.ADS_PER_BONUS`). Matn → ovoz ham shu imkoniyatdan sarflaydi.
+- AdMob'da yangi **Rewarded** reklama birligi yarating va GitHub Secret qo'shing: `ADMOB_REWARDED_ID`. Berilmasa Google TEST reklamasi chiqadi.

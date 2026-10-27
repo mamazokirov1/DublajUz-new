@@ -237,10 +237,10 @@ fun HomeScreen(
                     )
                 } else {
                     AssistChip(
-                        onClick = { if (remaining <= 0) showProDialog = true else onSettings() },
+                        onClick = { if (remaining <= 0) vm.showLimitPrompt() else showProDialog = true },
                         label = {
                             Text(
-                                if (remaining > 0) "Qoldi: $remaining / ${UsageStore.FREE_DAILY_DUBS}"
+                                if (remaining > 0) "Qoldi: $remaining"
                                 else "Limit tugadi"
                             )
                         },

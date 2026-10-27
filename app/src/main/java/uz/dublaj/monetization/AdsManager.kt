@@ -12,6 +12,9 @@ import com.google.android.gms.ads.AdRequest
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
+import com.google.android.gms.ads.OnUserEarnedRewardListener
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.google.android.gms.ads.interstitial.InterstitialAd
 import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import timber.log.Timber
@@ -35,6 +38,15 @@ object AdsManager {
     /** AdMob interstitial birligi (build'dan). */
     val INTERSTITIAL_AD_UNIT: String = BuildConfig.ADMOB_INTERSTITIAL_ID
 
+    /** AdMob rewarded (mukofotli) birligi (build'dan). */
+    val REWARDED_AD_UNIT: String = BuildConfig.ADMOB_REWARDED_ID
+
+    /** Mukofotli reklama ko'rsatishga tayyor bo'lganda true. */
+    var rewardedReady by mutableStateOf(false)
+        private set
+    private var rewarded: RewardedAd? = null
+    private var loadingRewarded = false
+
     /** SDK ishga tushib, reklama so'rash mumkin bo'lganda true (BannerAd shuni kuzatadi). */
     var adsReady by mutableStateOf(false)
         private set
@@ -57,6 +69,7 @@ object AdsManager {
                     Handler(Looper.getMainLooper()).post {
                         adsReady = true
                         preloadInterstitial(app)
+                        preloadRewarded(app)
                     }
                 }
             } catch (e: Exception) {
@@ -110,6 +123,65 @@ object AdsManager {
                 }
             }
         )
+    }
+
+    fun preloadRewarded(context: Context) {
+        if (!shouldShowAds(context) || !adsReady) return
+        if (loadingRewarded || rewarded != null) return
+        loadingRewarded = true
+        val app = context.applicationContext
+        RewardedAd.load(app, REWARDED_AD_UNIT, AdRequest.Builder().build(), object : RewardedAdLoadCallback() {
+            override fun onAdLoaded(ad: RewardedAd) {
+                loadingRewarded = false
+                rewarded = ad
+                rewardedReady = true
+                Timber.i("Rewarded yuklandi")
+            }
+            override fun onAdFailedToLoad(error: LoadAdError) {
+                loadingRewarded = false
+                rewarded = null
+                rewardedReady = false
+                Timber.w("Rewarded yuklanmadi: ${error.message} (${error.code})")
+            }
+        })
+    }
+
+    /**
+     * Foydalanuvchi o'zi tanlagan mukofotli reklamani ko'rsatadi.
+     * [onEarned] — reklama oxirigacha ko'rilganda; [onUnavailable] — reklama tayyor emas.
+     */
+    fun showRewarded(activity: Activity, onEarned: () -> Unit, onUnavailable: () -> Unit) {
+        val ad = if (adsReady) rewarded else null
+        val app = activity.applicationContext
+        if (ad == null) {
+            preloadRewarded(app)
+            onUnavailable()
+            return
+        }
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdDismissedFullScreenContent() {
+                rewarded = null
+                rewardedReady = false
+                preloadRewarded(app)
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                Timber.w("Rewarded ko'rsatilmadi: ${error.message}")
+                rewarded = null
+                rewardedReady = false
+                preloadRewarded(app)
+                onUnavailable()
+            }
+        }
+        try {
+            ad.show(activity, object : OnUserEarnedRewardListener {
+                override fun onUserEarnedReward(reward: com.google.android.gms.ads.rewarded.RewardItem) { onEarned() }
+            })
+        } catch (e: Exception) {
+            Timber.e(e, "Rewarded show xato")
+            rewarded = null
+            rewardedReady = false
+            onUnavailable()
+        }
     }
 
     /**

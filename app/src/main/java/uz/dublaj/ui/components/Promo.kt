@@ -112,7 +112,7 @@ fun ProPromoCard(priceText: String?, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.92f)
             )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ProLine(Icons.Default.AllInclusive, "Kunlik limit yo'q")
+                ProLine(Icons.Default.AllInclusive, "Kunlik limit yo'q, video uzunligi cheklanmaydi")
                 ProLine(Icons.Default.Block, "Reklama yo'q")
                 ProLine(Icons.Default.Queue, "Cheksiz navbat")
                 ProLine(Icons.Default.TextFields, "Matn → ovoz: 200 000 belgigacha")

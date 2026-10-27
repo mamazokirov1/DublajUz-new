@@ -19,6 +19,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import uz.dublaj.ui.theme.findActivity
 import androidx.compose.ui.Modifier
 import uz.dublaj.monetization.AdsManager
 import uz.dublaj.monetization.BannerAd
@@ -52,8 +54,10 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
     // NavHost'dan TASHQARIDA yaratiladi -> Activity'ga bog'langan, barcha ekranlar bitta nusxani ulashadi
     val vm: PipelineViewModel = viewModel()
 
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(incomingUri) {
         if (incomingUri != null) {
+            vm.restore(ctx) // Pro holati yuklangan bo'lsin (uzun videoni noto'g'ri rad etmaslik uchun)
             vm.setVideo(incomingUri)
             onIncomingConsumed()
         }
@@ -61,6 +65,23 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
 
     // Rang mavzusi va Pro holati
     val config by vm.config.collectAsState()
+    var prompt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<uz.dublaj.data.ProPrompt?>(null) }
+    LaunchedEffect(Unit) { vm.proPrompts.collect { prompt = it } }
+    prompt?.let { p ->
+        uz.dublaj.ui.components.LimitDialog(
+            prompt = p,
+            onUpgrade = {
+                prompt = null
+                val act = ctx.findActivity()
+                val launched = act != null && uz.dublaj.monetization.BillingManager.launchPurchase(act)
+                if (!launched) {
+                    vm.toast(uz.dublaj.monetization.BillingManager.lastError.value ?: "Xarid hozir mavjud emas. Keyinroq urinib ko'ring.")
+                }
+            },
+            onToast = { vm.toast(it) },
+            onDismiss = { prompt = null }
+        )
+    }
     LaunchedEffect(config.accent, config.isPro) {
         uz.dublaj.ui.theme.ThemeSettings.accent = config.accent
         uz.dublaj.ui.theme.ThemeSettings.pro = config.isPro
