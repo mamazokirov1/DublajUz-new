@@ -1,4 +1,4 @@
-# Chatterbox serveri
+# Chatterbox serveri qo'llanma
 
 `chatterbox_colab.ipynb` ni Google Colab'ga yuklang (Upload), T4 GPU ni tanlab, katakchalarni tartib bilan ishga tushiring.
 Oxirida chiqqan **manzil** va **token** ni ilovada Sozlamalar → "Ovoz: Chatterbox va klonlash" bo'limiga kiriting.
