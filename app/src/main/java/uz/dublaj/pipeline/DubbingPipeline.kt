@@ -139,8 +139,8 @@ class DubbingPipeline {
         )
     }
 
-    fun autoImport(context: Context, onProgress: (String) -> Unit): uz.dublaj.util.StorageScanner.ImportReport =
-        uz.dublaj.util.StorageScanner.importAll(context, ensure(context), onProgress)
+    fun importFromTree(context: Context, tree: Uri, onProgress: (String) -> Unit): uz.dublaj.util.StorageScanner.ImportReport =
+        uz.dublaj.util.StorageScanner.importFromTree(context, tree, ensure(context), onProgress)
 
     fun clearWork(context: Context) {
         ensure(context).clearWork()

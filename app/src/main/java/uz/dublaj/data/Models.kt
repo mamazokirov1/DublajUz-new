@@ -60,7 +60,7 @@ data class AppConfig(
     // ---- onlayn tarjima (Gemini)
     val onlineTranslate: Boolean = true,
     val geminiKey: String = "",
-    val geminiModel: String = "gemini-3.8-flash",
+    val geminiModel: String = "gemini-3.5-flash",
     /** Video mavzusi va uslubi haqida erkin izoh (Gemini'ga beriladi). */
     val videoContext: String = "",
     /** Murojaat shakli: "auto", "sen", "siz". */

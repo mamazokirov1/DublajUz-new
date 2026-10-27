@@ -67,7 +67,7 @@ fun QueueScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                     OutlinedButton(
                         onClick = { picker.launch("video/*") },
                         enabled = !running,
-                        modifier = Modifier.weight(1f).height(50.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 50.dp),
                         shape = MaterialTheme.shapes.medium
                     ) {
                         Icon(Icons.Default.Add, null)
@@ -77,7 +77,7 @@ fun QueueScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                     if (running) {
                         Button(
                             onClick = { vm.cancel() },
-                            modifier = Modifier.weight(1f).height(50.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 50.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = ButtonDefaults.buttonColors(containerColor = cs.error, contentColor = cs.onError)
                         ) {
@@ -93,7 +93,7 @@ fun QueueScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                 } else vm.startQueue(context)
                             },
                             enabled = hasWaiting,
-                            modifier = Modifier.weight(1f).height(50.dp),
+                            modifier = Modifier.weight(1f).heightIn(min = 50.dp),
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Icon(Icons.Default.PlayArrow, null)

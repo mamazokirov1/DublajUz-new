@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package uz.dublaj.ui.screens
 
 import androidx.compose.animation.core.animateIntAsState
@@ -109,7 +111,7 @@ fun SettingsScreen(
             Card(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Rejim", style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         FilterChip(
                             selected = !expert,
                             onClick = { vm.setConfig(config.copy(expertMode = false)) },
@@ -248,7 +250,7 @@ fun SettingsScreen(
                     label = { Text("Gemini API kaliti") },
                     visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation()
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedButton(onClick = { showKey = !showKey }, shape = MaterialTheme.shapes.medium) {
                         Text(if (showKey) "Yashirish" else "Ko'rsatish")
                     }
@@ -298,7 +300,7 @@ fun SettingsScreen(
                     supportingText = { Text("Masalan: yo'l harakati, norasmiy, ustoz shogirdga gapiradi") }
                 )
                 Text("Murojaat", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("auto" to "Avto", "sen" to "Sen", "siz" to "Siz").forEach { (id, label) ->
                         FilterChip(
                             selected = config.addressForm == id,
@@ -308,7 +310,7 @@ fun SettingsScreen(
                     }
                 }
                 Text("Ohang", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("casual" to "Og'zaki", "neutral" to "Oddiy", "formal" to "Rasmiy").forEach { (id, label) ->
                         FilterChip(
                             selected = config.tone == id,
@@ -352,7 +354,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
                 Text("Ovoz dvigateli", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("vits" to "Offline (VITS)", "chatterbox" to "Chatterbox").forEach { (id, label) ->
                         FilterChip(
                             selected = config.ttsEngine == id,
@@ -379,7 +381,7 @@ fun SettingsScreen(
                         label = { Text("Server tokeni") },
                         visualTransformation = if (showCbToken) VisualTransformation.None else PasswordVisualTransformation()
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedButton(onClick = { showCbToken = !showCbToken }, shape = MaterialTheme.shapes.medium) {
                             Text(if (showCbToken) "Yashirish" else "Ko'rsatish")
                         }
@@ -390,7 +392,7 @@ fun SettingsScreen(
                         ) { Text("Serverni tekshirish") }
                     }
                     Text("Qaysi ovozda gapirsin", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf("default" to "Standart", "video" to "Videodagi ovoz", "file" to "Namuna fayl").forEach { (id, label) ->
                             FilterChip(
                                 selected = config.cbVoiceMode == id,
@@ -440,7 +442,7 @@ fun SettingsScreen(
                     "Matn aniqlash va ovoz offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (Sozlamalar → Onlayn tarjima).",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     StatusPill("Matn aniqlash", models.whisper)
                     StatusPill("Tarjima (Gemini)", config.onlineReady)
                     StatusPill("Ovoz", models.vits)
@@ -457,16 +459,16 @@ fun SettingsScreen(
                 Button(
                     onClick = { startAutoImport() },
                     enabled = !busy,
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                     shape = MaterialTheme.shapes.medium
                 ) {
                     Icon(Icons.Default.FolderOpen, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Yuklangan fayllarni avtomatik topish")
+                    Text("Papka tanlab, fayllarni topish")
                 }
                 Text(
-                    "Telefoningizdagi Yuklanmalar (Download) va boshqa papkalardan kerakli fayllarni o'zi topib qo'shadi. " +
-                        "Birinchi marta \"Barcha fayllarga kirish\" ruxsatini yoqish kerak bo'ladi.",
+                    "Fayllar turgan papkani (masalan, Yuklanmalar) tanlang — kerakli fayllarni o'zi topib qo'shadi. " +
+                        "Hech qanday maxsus ruxsat kerak emas.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
 
@@ -476,7 +478,7 @@ fun SettingsScreen(
                     "Videodagi gapni eshitib, yozib oladi. \"Tez\" kichik va tez, \"Aniq\" katta va aniqroq (sekinroq).",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     WhisperRecognizer.MODEL_OPTIONS.forEach { m ->
                         FilterChip(
                             selected = config.whisperModel == m.id,
@@ -486,7 +488,7 @@ fun SettingsScreen(
                     }
                 }
                 Text(WhisperRecognizer.info(config.whisperModel).note, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(onClick = { vm.downloadWhisper(context) }, enabled = !busy) { Text("Yuklash") }
                     OutlinedButton(onClick = { whisperPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Fayldan qo'shish") }
                 }
@@ -495,7 +497,7 @@ fun SettingsScreen(
                 Text("O'zbekcha ovoz", style = MaterialTheme.typography.titleMedium)
                 Text("Tarjimani o'zbekcha o'qiydigan ikki fayl: ovoz fayli (.onnx) va uning sozlama fayli (.json). Internetdan yuklash tavsiya etiladi (Wi-Fi bilan).", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                 Button(onClick = { vm.downloadVits(context) }, enabled = !busy) { Text("Ovozni internetdan yuklash") }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedButton(onClick = { vitsPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Ovoz fayli (.onnx)") }
                     OutlinedButton(onClick = { vitsCfgPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Sozlama fayli (.json)") }
                 }
@@ -512,7 +514,7 @@ fun SettingsScreen(
                 initiallyExpanded = true
             ) {
                 Text("Tayyor sozlama", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     VoicePreset.values().forEach { p ->
                         FilterChip(
                             selected = config.applyPreset(p) == config,
@@ -577,7 +579,7 @@ fun SettingsScreen(
                     shape = MaterialTheme.shapes.medium,
                     label = { Text("Tinglash uchun matn") }
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(
                         onClick = { vm.previewVoice(context, sample) },
                         enabled = models.vits && !busy,
@@ -703,7 +705,7 @@ fun SettingsScreen(
                 title = "Ko'rinish",
                 subtitle = "Mavzu va ranglar"
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("Tizim", "Yorug'", "Qorong'i").forEachIndexed { i, label ->
                         FilterChip(
                             selected = config.themeMode == i,

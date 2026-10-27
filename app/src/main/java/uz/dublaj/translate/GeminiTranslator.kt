@@ -245,7 +245,7 @@ class GeminiTranslator(
     }
 
     companion object {
-        const val DEFAULT_MODEL = "gemini-3.8-flash"
+        const val DEFAULT_MODEL = "gemini-3.5-flash"
         const val KEY_URL = "https://aistudio.google.com/apikey"
 
         /** Taxminiy TTS tezligi: soniyasiga shuncha belgi (uzunlik cheklovi uchun). */

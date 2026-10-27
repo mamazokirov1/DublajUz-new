@@ -55,7 +55,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uz.dublaj.ui.theme.Brand
 import uz.dublaj.ui.viewmodel.PipelineViewModel
-import uz.dublaj.util.StorageScanner
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.sin
@@ -165,7 +164,7 @@ fun StepCard(
                         color = if (state == StepState.LOCKED) cs.onSurfaceVariant.copy(alpha = 0.7f) else cs.onSurface
                     )
                     if (!summary.isNullOrBlank() && !expanded) {
-                        Text(summary, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1)
+                        Text(summary, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                 }
                 if (state == StepState.DONE) {
@@ -376,31 +375,14 @@ fun rememberVideoInfo(uri: Uri? = null, file: File? = null): State<VideoInfo?> {
     }
 }
 
-/** "Download papkadan avtomatik import" — ruxsatni so'raydi, so'ng modellarni topib nusxalaydi. */
+/** Papka tanlash (SAF): ichidan model fayllarini topib qo'shadi. "Barcha fayllar" ruxsati kerak emas. */
 @Composable
 fun rememberAutoImportAction(vm: PipelineViewModel): () -> Unit {
     val context = LocalContext.current
-    val accessLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (StorageScanner.hasAccess(context)) vm.autoImport(context)
+    val treeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        uri?.let { vm.importFromTree(context, it) }
     }
-    val legacyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) vm.autoImport(context)
-    }
-    return {
-        if (StorageScanner.hasAccess(context)) {
-            vm.autoImport(context)
-        } else if (Build.VERSION.SDK_INT >= 30) {
-            try {
-                accessLauncher.launch(
-                    Intent(AndroidSettings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}"))
-                )
-            } catch (e: Exception) {
-                accessLauncher.launch(Intent(AndroidSettings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            }
-        } else {
-            legacyLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-    }
+    return { treeLauncher.launch(null) }
 }
 
 // ---------------------------------------------------------------- Pro benefits dialog

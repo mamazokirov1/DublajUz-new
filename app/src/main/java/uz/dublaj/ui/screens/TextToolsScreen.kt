@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package uz.dublaj.ui.screens
 
 import android.content.ClipData
@@ -112,7 +114,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                             if (videoUri == null) {
                                 Button(
                                     onClick = { picker.launch("video/*") }, enabled = !busy,
-                                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                                 ) {
                                     Icon(Icons.Default.VideoLibrary, null)
                                     Spacer(Modifier.width(8.dp))
@@ -123,7 +125,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                     Button(
                                         onClick = { vm.transcribeAndTranslate(context) },
                                         enabled = !busy && models.whisper && config.onlineReady,
-                                        modifier = Modifier.weight(1f).height(52.dp)
+                                        modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                                     ) {
                                         Icon(Icons.Default.TextSnippet, null)
                                         Spacer(Modifier.width(8.dp))
@@ -131,7 +133,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                     }
                                     OutlinedButton(
                                         onClick = { picker.launch("video/*") }, enabled = !busy,
-                                        modifier = Modifier.height(52.dp)
+                                        modifier = Modifier.heightIn(min = 52.dp)
                                     ) { Text("Boshqa video") }
                                 }
                                 if (!models.whisper || !config.onlineReady) {
@@ -170,7 +172,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                 Button(
                                     onClick = { vm.speak(context, typed) },
                                     enabled = !busy && typed.isNotBlank(),
-                                    modifier = Modifier.weight(1f).height(52.dp)
+                                    modifier = Modifier.weight(1f).heightIn(min = 52.dp)
                                 ) {
                                     Icon(Icons.Default.RecordVoiceOver, null)
                                     Spacer(Modifier.width(8.dp))
@@ -183,7 +185,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                             ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
                                         if (t.isBlank()) vm.toast("Buferda matn yo'q") else typed = t
                                     },
-                                    modifier = Modifier.height(52.dp)
+                                    modifier = Modifier.heightIn(min = 52.dp)
                                 ) { Icon(Icons.Default.ContentPaste, contentDescription = "Qo'yish") }
                             }
                             TextButton(
@@ -281,7 +283,7 @@ private fun TextBlock(title: String, text: String, fileBase: String, onSpeak: ((
             if (text.length > 400) {
                 TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Yig'ish" else "To'liq ko'rish") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilledTonalButton(
                     onClick = {
                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -327,7 +329,7 @@ private fun TextBlock(title: String, text: String, fileBase: String, onSpeak: ((
                 }
             }
             if (onSpeak != null) {
-                Button(onClick = onSpeak, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                Button(onClick = onSpeak, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Icon(Icons.Default.RecordVoiceOver, null)
                     Spacer(Modifier.width(8.dp))
                     Text("Audioga aylantirish")
@@ -388,7 +390,7 @@ private fun AudioCard(file: File, vm: PipelineViewModel) {
                         Toast.makeText(context, "Ijro etilmadi: ${e.message}", Toast.LENGTH_LONG).show()
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)
             ) {
                 Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, null)
                 Spacer(Modifier.width(8.dp))

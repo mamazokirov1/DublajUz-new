@@ -7,6 +7,8 @@
    `KEYSTORE_B64` (KEYSTORE_B64.txt ichidagi matn), `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS` = `dublaj-upload`.
 4. Eski `app/dublaj-sign.keystore` faqat TEST APK uchun. Play uchun ishlatilmaydi.
 
+> **AAB nega chiqmagan edi?** CI `KEYSTORE_B64` Secret yo'q bo'lsa release bosqichini jimgina o'tkazib yuborardi. Endi Secret yo'q bo'lsa ish **qizil** bo'ladi va xabarda qaysi Secret yetishmayotgani yoziladi. 4 ta Secret (`KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`) qo'shilgach — Actions → Run workflow — AAB `DublajUz-release-aab` artifaktida chiqadi.
+
 ## B. AdMob (ixtiyoriy, daromad uchun)
 1. admob.google.com → App qo'shing → App ID. Banner va Interstitial ad unit yarating.
 2. Secrets: `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`.
@@ -28,7 +30,7 @@
 - **Ads:** "Ha, ilovada reklama bor".
 - **Target audience:** 13+ (bolalar uchun emas).
 - **Content rating:** so'rovnomani to'ldiring. AI bilan yaratilgan ovoz borligini ko'rsating.
-- **Foreground service:** turlari `mediaProcessing` (Android 15+) va `dataSync` (Android 10–14). Tavsif: "Foydalanuvchi tanlagan videoni telefonda matnga aylantirish, tarjima va ovoz sintezi — bir necha daqiqa davom etadi; bildirishnomada ko'rinadi". Qisqa video (demo) so'rashi mumkin.
+- **Foreground service:** modellarni yuklash — `dataSync`; video qayta ishlash — `mediaProcessing` (Android 15+) / `dataSync` (10–14). Turlari `mediaProcessing` (Android 15+) va `dataSync` (Android 10–14). Tavsif: "Foydalanuvchi tanlagan videoni telefonda matnga aylantirish, tarjima va ovoz sintezi — bir necha daqiqa davom etadi; bildirishnomada ko'rinadi". Qisqa video (demo) so'rashi mumkin.
 - **App access:** ilova ishlashi uchun Gemini API kaliti va ovoz model fayllari kerak — tekshiruvchiga qo'llanma/test kalit bering (pastdagi "Muhim" ga qarang).
 - **AI-generated content:** foydalanuvchi muammo/noo'rin natija haqida xabar bera olishi kerak — Sozlamalardagi "muammo hisoboti" shu uchun.
 

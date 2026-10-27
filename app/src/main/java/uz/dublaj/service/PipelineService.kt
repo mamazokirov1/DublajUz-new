@@ -32,9 +32,10 @@ class PipelineService : Service() {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Dublyaj ishlamoqda…"
         val notification = buildNotification(text)
         try {
+            val dataSync = intent?.getBooleanExtra(EXTRA_DATA_SYNC, false) == true
             val type = when {
-                // Android 15+: video/audio qayta ishlash uchun mo'ljallangan tur
-                Build.VERSION.SDK_INT >= 35 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
+                // Modellarni yuklash/import = dataSync; video qayta ishlash (Android 15+) = mediaProcessing
+                Build.VERSION.SDK_INT >= 35 && !dataSync -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 else -> 0
             }
@@ -98,12 +99,15 @@ class PipelineService : Service() {
         private const val CHANNEL_ID = "dublaj_pipeline"
         private const val NOTIF_ID = 1001
         private const val EXTRA_TEXT = "text"
+        private const val EXTRA_DATA_SYNC = "data_sync"
 
-        fun start(context: Context, text: String) {
+        fun start(context: Context, text: String, dataSync: Boolean = false) {
             try {
                 ContextCompat.startForegroundService(
                     context,
-                    Intent(context, PipelineService::class.java).putExtra(EXTRA_TEXT, text)
+                    Intent(context, PipelineService::class.java)
+                        .putExtra(EXTRA_TEXT, text)
+                        .putExtra(EXTRA_DATA_SYNC, dataSync)
                 )
             } catch (e: Exception) {
                 Timber.w(e, "PipelineService start")   // servis bo'lmasa ham ish davom etadi

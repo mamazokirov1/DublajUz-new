@@ -83,41 +83,50 @@ jobs:
           fail_on_unmatched_files: true
 
       # ---------------------------------------------------------------- PLAY (release AAB)
-      # Faqat Secrets (KEYSTORE_B64 ...) qo'shilgan bo'lsa ishlaydi. Xato bo'lsa ish QIZIL bo'ladi.
-      - name: Release skipped (no upload key)
-        if: env.KEYSTORE_B64 == ''
-        run: echo "::notice::Play uchun release (AAB) yig'ilmadi — Secrets ga KEYSTORE_B64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD qo'shing (tools/make_upload_key.sh)."
+      # KEYSTORE_B64 Secret bo'lmasa ish QIZIL bo'ladi (jimgina o'tkazib yubormaydi) — AAB yo'qligining sababi shu edi.
+      - name: Check upload key secrets
+        run: |
+          missing=""
+          [ -z "$KEYSTORE_B64" ] && missing="$missing KEYSTORE_B64"
+          [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] && missing="$missing KEYSTORE_PASSWORD"
+          [ -z "${{ secrets.KEY_ALIAS }}" ] && missing="$missing KEY_ALIAS"
+          [ -z "${{ secrets.KEY_PASSWORD }}" ] && missing="$missing KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error title=AAB yig'ilmadi::Settings > Secrets > Actions ga qo'shing:$missing  (PLAY_CHECKLIST.md, A bo'limi)"
+            exit 1
+          fi
 
       - name: Decode upload keystore
-        if: env.KEYSTORE_B64 != ''
         run: |
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
 
       - name: Build Release AAB + APK
-        if: env.KEYSTORE_B64 != ''
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: gradle bundleRelease assembleRelease -PbuildNumber=${{ github.run_number }} -PgithubRepo=${{ github.repository }} --stacktrace
 
+      - name: Verify AAB signature
+        run: |
+          ls -la app/build/outputs/bundle/release/
+          jarsigner -verify app/build/outputs/bundle/release/*.aab | head -3
+
       - name: Check 16 KB page size (release APK)
-        if: env.KEYSTORE_B64 != ''
         continue-on-error: true
         run: python3 tools/check_16kb.py app/build/outputs/apk/release/*.apk
 
       - name: Upload Release AAB (Play Console ga yuklang)
-        if: env.KEYSTORE_B64 != ''
         uses: actions/upload-artifact@v4
         with:
           name: DublajUz-release-aab
           path: app/build/outputs/bundle/release/*.aab
           retention-days: 14
           overwrite: true
+          if-no-files-found: error
 
       - name: Upload Release APK (Play'ga o'xshash test)
-        if: env.KEYSTORE_B64 != ''
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:

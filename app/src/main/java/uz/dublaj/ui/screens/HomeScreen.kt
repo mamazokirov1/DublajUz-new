@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package uz.dublaj.ui.screens
 
 import android.Manifest
@@ -90,7 +92,8 @@ fun HomeScreen(
 
     // Dublyaj tugagach interstitial (Pro da o'tkazib yuboriladi)
     LaunchedEffect(state) {
-        if (state is PipelineState.Success) {
+        val s = state
+        if (s is PipelineState.Success && vm.markAdShown(s.outputPath)) {
             val act = context.findActivity() ?: return@LaunchedEffect
             AdsManager.showInterstitialAfterDub(act)
         }
@@ -146,7 +149,7 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             // Pro da BannerAd ichida hech narsa chizilmaydi
-            BannerAd(Modifier.padding(bottom = 4.dp))
+            Column(Modifier.navigationBarsPadding()) { BannerAd(Modifier.padding(bottom = 4.dp)) }
         }
     ) { padding ->
         Column(
@@ -157,7 +160,7 @@ fun HomeScreen(
         ) {
             GradientHero(
                 title = "DublajUz",
-                subtitle = "Offline o'zbekcha video dublyaj",
+                subtitle = "O'zbekcha video dublyaj",
                 onSettings = onSettings,
                 onHistory = onHistory,
                 onQueue = onQueue,
@@ -233,7 +236,7 @@ fun HomeScreen(
             }
 
             Column(
-                Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(),
+                Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 // ---- modellar
@@ -318,7 +321,7 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall, color = cs.tertiary
                         )
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(
                             onClick = { vm.transcribe(context) },
                             enabled = videoUri != null && !running && models.whisper
@@ -337,7 +340,7 @@ fun HomeScreen(
                     state = stepState(3)
                 ) {
                     val pending = units.count { it.check }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         AssistChip(onClick = {}, label = { Text("${units.size} gap") })
                         if (pending > 0) {
                             AssistChip(
@@ -349,7 +352,7 @@ fun HomeScreen(
                     OutlinedButton(
                         onClick = onEditTranslation,
                         enabled = hasTranslation && !running,
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                     ) {
                         Icon(Icons.Default.Edit, null)
                         Spacer(Modifier.width(8.dp))
@@ -398,12 +401,12 @@ fun HomeScreen(
 
                 FilledTonalButton(
                     onClick = onTextTools,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
                     shape = MaterialTheme.shapes.medium
                 ) {
                     Icon(Icons.Default.RecordVoiceOver, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Matn va ovoz: videodan matn / matndan audio")
+                    Text("Matn va ovoz: video → matn, matn → audio", textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
 
                 // ---- so'nggi dublyajlar (ilova yopilsa ham saqlanadi)
@@ -452,7 +455,7 @@ fun HomeScreen(
                 ) { Text(if (updateProgress != null) "Yuklanmoqda…" else "Yuklab olish va o'rnatish") }
             },
             dismissButton = {
-                Row {
+                FlowRow {
                     TextButton(onClick = { vm.dismissUpdate(context, true) }) { Text("O'tkazib yuborish") }
                     TextButton(onClick = { vm.dismissUpdate(context, false) }) { Text("Keyinroq") }
                 }
@@ -505,7 +508,8 @@ private fun RecentCard(entry: HistoryEntry) {
         }
         Column(Modifier.padding(10.dp)) {
             Text(
-                entry.title.ifBlank { "Dublyaj" }, style = MaterialTheme.typography.labelLarge, maxLines = 1
+                entry.title.ifBlank { "Dublyaj" }, style = MaterialTheme.typography.labelLarge, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
             Text(fmtSize(entry.sizeBytes), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         }
@@ -517,7 +521,7 @@ private fun BigButton(text: String, icon: androidx.compose.ui.graphics.vector.Im
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(54.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
         shape = MaterialTheme.shapes.medium
     ) {
         Icon(icon, null)
@@ -548,7 +552,7 @@ private fun SetupCard(
                 "Matn aniqlash va o'zbekcha ovoz offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (Sozlamalar).",
                 style = MaterialTheme.typography.bodySmall
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 StatusPill("Matn aniqlash", whisper)
                 StatusPill("Tarjima", online)
                 StatusPill("Ovoz", vits)
@@ -557,11 +561,11 @@ private fun SetupCard(
                 Text(status, style = MaterialTheme.typography.bodySmall, color = cs.primary)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Button(onClick = onAuto, enabled = !busy) {
                     Icon(Icons.Default.FolderOpen, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Avtomatik topish")
+                    Text("Papkadan topish")
                 }
                 OutlinedButton(onClick = onManual) { Text("Qo'lda") }
             }
@@ -593,7 +597,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit) {
             VideoPlayer(Uri.fromFile(file), Modifier.fillMaxWidth())
             Button(
                 onClick = { onPlay(Uri.fromFile(file)) },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
                 Icon(Icons.Default.Fullscreen, null)
@@ -691,7 +695,7 @@ private fun ErrorCard(message: String, onClose: () -> Unit, onReport: () -> Unit
                     Text("Nima qilish kerak: $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = onReport) { Text("Hisobot yuborish") }
                 TextButton(onClick = onClose) { Text("Yopish") }
             }

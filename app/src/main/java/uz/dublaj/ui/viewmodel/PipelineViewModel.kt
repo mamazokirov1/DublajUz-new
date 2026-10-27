@@ -31,7 +31,6 @@ import uz.dublaj.pipeline.DubbingPipeline
 import uz.dublaj.service.PipelineService
 import uz.dublaj.util.FileUtils
 import uz.dublaj.util.OutputUtils
-import uz.dublaj.util.StorageScanner
 import uz.dublaj.util.UpdateChecker
 import uz.dublaj.data.QueueItem
 import uz.dublaj.data.QueueStatus
@@ -141,6 +140,19 @@ class PipelineViewModel : ViewModel() {
 
     // ------------------------------------------------------------------ holat
 
+    private val proListener: (Boolean) -> Unit = { pro ->
+        _config.value = _config.value.copy(isPro = pro)
+        if (pro) toast("Pro faollashtirildi ✓")
+    }
+
+    private var adShownFor: String? = null
+    /** Bitta natija uchun reklama faqat bir marta ko'rsatiladi (ekranga qaytganda takrorlanmasin). */
+    fun markAdShown(path: String): Boolean {
+        if (adShownFor == path) return false
+        adShownFor = path
+        return true
+    }
+
     fun restore(context: Context) {
         if (restored) return
         restored = true
@@ -148,10 +160,7 @@ class PipelineViewModel : ViewModel() {
         appCtx = app
         _config.value = ConfigStore.load(app)
         // Play xarididan keyin UI ni yangilash
-        BillingManager.addProListener { pro ->
-            _config.value = _config.value.copy(isPro = pro)
-            if (pro) toast("Pro faollashtirildi ✓")
-        }
+        BillingManager.addProListener(proListener)
         BillingManager.refreshPurchases(app)
         viewModelScope.launch {
             val r = withContext(Dispatchers.IO) { pipeline.restore(app) }
@@ -160,13 +169,8 @@ class PipelineViewModel : ViewModel() {
             _translationUnits.value = r.units
             _approved.value = r.approved
         }
-        // Modellar yetishmasa va ruxsat bor bo'lsa, Download papkasidan jimgina tiklaymiz
         viewModelScope.launch {
-            val m = withContext(Dispatchers.IO) { pipeline.modelsInfo(app, _config.value) }
-            _models.value = m
-            if ((!m.whisper || !m.vits) && StorageScanner.hasAccess(app)) {
-                autoImport(app, quiet = true)
-            }
+            _models.value = withContext(Dispatchers.IO) { pipeline.modelsInfo(app, _config.value) }
         }
     }
 
@@ -250,6 +254,7 @@ class PipelineViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        BillingManager.removeProListener(proListener)
         releasePreview()
         super.onCleared()
     }
@@ -359,7 +364,8 @@ class PipelineViewModel : ViewModel() {
             return
         }
         val cfg0 = _config.value
-        val limitMsg = UsageStore.canDub(context, cfg0.isPro)
+        val estMin = (((_translationUnits.value.lastOrNull()?.end ?: 0.0) / 60.0).toInt()).coerceAtLeast(1)
+        val limitMsg = UsageStore.canDub(context, cfg0.isPro, estMin)
         if (limitMsg != null) {
             _state.value = PipelineState.Error(limitMsg)
             toast(limitMsg)
@@ -515,25 +521,16 @@ class PipelineViewModel : ViewModel() {
     }
 
 
-    /** Yuklab olingan fayllarni (matn aniqlash, tarjima, ovoz) topib qo'shadi. */
-    fun autoImport(context: Context, quiet: Boolean = false) {
+    /** Foydalanuvchi tanlagan papkadan modellarni topib qo'shadi (SAF). */
+    fun importFromTree(context: Context, tree: Uri) {
         val app = context.applicationContext
         if (isBusy) return
-        if (!StorageScanner.hasAccess(app)) {
-            if (!quiet) _modelStatus.value = "Xato: fayllarga kirish ruxsati berilmagan"
-            return
-        }
-        launchModelTask(app, "Komponentlar qidirilmoqda…") {
-            val rep = pipeline.autoImport(app) { _modelStatus.value = it }
+        launchModelTask(app, "Papka qidirilmoqda…") {
+            val rep = pipeline.importFromTree(app, tree) { _modelStatus.value = it }
             if (rep.found == 0) {
-                if (quiet) {
-                    quietNoop = true
-                } else {
-                    throw IllegalStateException(
-                        "Hech narsa topilmadi. Fayllarni Download papkasiga qo'ying: " +
-                            rep.notFound.joinToString("; ")
-                    )
-                }
+                throw IllegalStateException(
+                    "Bu papkada kerakli fayl topilmadi: " + rep.notFound.joinToString("; ")
+                )
             }
         }
     }
@@ -715,6 +712,12 @@ class PipelineViewModel : ViewModel() {
             try {
                 while (true) {
                     val item = _queue.value.firstOrNull { it.status == QueueStatus.WAITING } ?: break
+                    val limitMsg = UsageStore.canDub(app, cfg.isPro)
+                    if (limitMsg != null) {
+                        updateItem(item.id) { it.copy(status = QueueStatus.FAILED, message = limitMsg) }
+                        toast(limitMsg)
+                        break
+                    }
                     updateItem(item.id) { it.copy(status = QueueStatus.RUNNING, progress = 0f, message = "Boshlanmoqda…") }
                     try {
                         var skipped = 0
@@ -734,6 +737,7 @@ class PipelineViewModel : ViewModel() {
                                 updateItem(item.id) { it.copy(progress = 0.5f + p * 0.5f, message = m) }
                             }.also { autoSave(app, it, cfg) }
                         }
+                        UsageStore.recordDub(app, 60.0)
                         updateItem(item.id) {
                             it.copy(
                                 status = QueueStatus.DONE, progress = 1f, outputPath = out.absolutePath,
@@ -773,8 +777,6 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
-    private var quietNoop = false
-
     private fun launchModelTask(app: Context, label: String, block: suspend () -> Unit) {
         if (job?.isActive == true) return
         pipeline.resetCancel()
@@ -782,11 +784,10 @@ class PipelineViewModel : ViewModel() {
         _busy.value = true
         _modelStatus.value = label
         job = viewModelScope.launch {
-            PipelineService.start(app, label)
+            PipelineService.start(app, label, dataSync = true)
             try {
                 withContext(Dispatchers.IO) { block() }
-                _modelStatus.value = if (quietNoop) null else "Tayyor ✓"
-                quietNoop = false
+                _modelStatus.value = "Tayyor ✓"
             } catch (e: CancellationException) {
                 throw e
             } catch (e: UserCancelled) {

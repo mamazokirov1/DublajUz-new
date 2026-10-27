@@ -19,7 +19,7 @@ DublajUz — videodagi nutqni matnga aylantirib, o'zbek tiliga tarjima qiladigan
 | Videodan olingan **matn** (transkripsiya), siz yozgan "video mavzusi", lug'at va tarjima sozlamalari | Google Gemini API (sizning o'z API kalitingiz bilan) | Tarjima qilish. Videoning o'zi yoki ovozi yuborilmaydi. Google'ning shartlari: https://policies.google.com/privacy |
 | Reklama identifikatori (Advertising ID), taxminiy joylashuv (IP asosida), qurilma va reklama bilan o'zaro aloqa ma'lumotlari | Google AdMob | Faqat bepul (Free) versiyada reklama ko'rsatish. Hududingizga qarab avval rozilik so'raladi (Google UMP) |
 | Xarid holati | Google Play Billing | Pro versiyani ochish. To'lov ma'lumotlarini biz ko'rmaymiz |
-| IP manzil va yuklab olingan fayl nomi | Hugging Face (`huggingface.co`) | Whisper nutq modelini yuklab olish |
+| IP manzil va yuklab olingan fayl nomi | Hugging Face (`huggingface.co`) va GitHub (`github.com`) | Nutq (Whisper) va o'zbekcha ovoz modellarini yuklab olish |
 
 Biz ma'lumotlaringizni sotmaymiz.
 

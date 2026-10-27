@@ -70,6 +70,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Native kutubxonalar uchun Play Console ogohlantirishini yo'qotadi
+            ndk.debugSymbolLevel = "SYMBOL_TABLE"
             // Upload key berilmasa release imzosiz chiqadi (ochiq kalit bilan imzolanmaydi)
             val ks = System.getenv("KEYSTORE_FILE")
             if (!ks.isNullOrBlank() && file(ks).exists()) {
@@ -113,6 +115,11 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Ilova faqat o'zbekcha: Play til bo'yicha bo'laklab tashlamasin
+    bundle {
+        language { enableSplit = false }
     }
 
     packaging {
