@@ -1,8 +1,8 @@
 # DublajUz (Android)Shoirjon
 
-Offline o'zbekcha video dublyaj: **Whisper (STT) → Gemini (tarjima) → tahrir → VITS (o'zbek TTS) → MP4**.
+Offline o'zbekcha video dublyaj: **Whisper (STT) → AI tarjima (Gemini, OpenAI/ChatGPT, Claude, DeepSeek, Groq, OpenRouter, Mistral yoki o'zingizning OpenAI-mos serveringiz) → tahrir → VITS (o'zbek TTS) → MP4**.
 
-Matn aniqlash va ovoz sintezi telefonda offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (internet).
+Matn aniqlash va ovoz sintezi telefonda offline ishlaydi. Tarjima uchun tanlangan AI provayderning API kaliti kerak (internet).
 
 ## Ikki xil build
 

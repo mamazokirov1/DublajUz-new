@@ -13,6 +13,12 @@ object UsageStore {
     const val FREE_DAILY_DUBS = 3
     /** Free da kuniga ruxsat etilgan umumiy daqiqalar (taxminan). */
     const val FREE_DAILY_MINUTES = 15
+    /** Free da matn → ovoz uchun bir martalik matn uzunligi (belgi). */
+    const val FREE_TEXT_CHARS = 1500
+    /** Pro da matn → ovoz uchun bir martalik matn uzunligi (belgi). */
+    const val PRO_TEXT_CHARS = 200_000
+    /** Free da navbatda bir vaqtda turishi mumkin bo'lgan videolar soni. */
+    const val FREE_QUEUE_ITEMS = 2
 
     private fun dayKey(): String {
         val c = Calendar.getInstance()

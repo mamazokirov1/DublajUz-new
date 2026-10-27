@@ -31,6 +31,19 @@ object ConfigStore {
             dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
             autoSaveGallery = sp.getBoolean("autoSaveGallery", d.autoSaveGallery),
             onlineTranslate = sp.getBoolean("onlineTranslate", d.onlineTranslate),
+            aiProvider = sp.getString("aiProvider", d.aiProvider) ?: d.aiProvider,
+            aiKeys = uz.dublaj.translate.AiProvider.values().mapNotNull { p ->
+                sp.getString("aiKey_${p.id}", null)?.takeIf { it.isNotBlank() }?.let { p.id to it }
+            }.toMap(),
+            aiModels = uz.dublaj.translate.AiProvider.values().mapNotNull { p ->
+                sp.getString("aiModel_${p.id}", null)?.takeIf { it.isNotBlank() }?.let { p.id to it }
+            }.toMap(),
+            aiBaseUrl = sp.getString("aiBaseUrl", d.aiBaseUrl) ?: d.aiBaseUrl,
+            aiTemperature = sp.getFloat("aiTemperature", d.aiTemperature),
+            aiChunkSize = sp.getInt("aiChunkSize", d.aiChunkSize),
+            aiExtraPrompt = sp.getString("aiExtraPrompt", d.aiExtraPrompt) ?: d.aiExtraPrompt,
+            accent = sp.getInt("accent", d.accent),
+            autoSaveAudio = sp.getBoolean("autoSaveAudio", d.autoSaveAudio),
             geminiKey = sp.getString("geminiKey", d.geminiKey) ?: d.geminiKey,
             geminiModel = sp.getString("geminiModel", d.geminiModel) ?: d.geminiModel,
             videoContext = sp.getString("videoContext", d.videoContext) ?: d.videoContext,
@@ -51,7 +64,18 @@ object ConfigStore {
     }
 
     fun save(context: Context, c: AppConfig) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        val ed = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+        for (p in uz.dublaj.translate.AiProvider.values()) {
+            ed.putString("aiKey_${p.id}", c.aiKeys[p.id].orEmpty())
+            ed.putString("aiModel_${p.id}", c.aiModels[p.id].orEmpty())
+        }
+        ed.putString("aiProvider", c.aiProvider)
+            .putString("aiBaseUrl", c.aiBaseUrl)
+            .putFloat("aiTemperature", c.aiTemperature)
+            .putInt("aiChunkSize", c.aiChunkSize)
+            .putString("aiExtraPrompt", c.aiExtraPrompt)
+            .putInt("accent", c.accent)
+            .putBoolean("autoSaveAudio", c.autoSaveAudio)
             .putFloat("originalVolume", c.originalVolume)
             .putFloat("uzbekVolume", c.uzbekVolume)
             .putFloat("maxAtempo", c.maxAtempo)

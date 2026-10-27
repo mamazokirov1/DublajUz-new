@@ -45,3 +45,9 @@
 - **Gemini kaliti:** foydalanuvchi o'z kalitini kiritadi. Oddiy odamlar uchun qiyin; keyinchalik o'z backend'ingiz (kalit yashirin) yoki boshqa yechim o'ylash kerak.
 - **Litsenziya:** ommaviy repo'ga qo'yish — bu tarqatish. VITS modeli va Whisper modellari litsenziyasi tijoriy ilovaga ruxsat berishini tekshiring.
 - **Pul olish:** Pro xaridni sotish uchun Play Console'da to'lov profili (merchant) kerak va mamlakatingiz qo'llab-quvvatlanishi lozim — Console'da tekshiring.
+
+## Qo'shimcha (v11): Data safety va Pro
+- **Data safety:** "Data shared" bo'limiga qo'shing: matn (transkripsiya) — uchinchi tomon AI provayderlarga (foydalanuvchi o'zi tanlaydi va o'z kaliti bilan). Maqsad: ilova funksiyasi.
+- **Pro (bir martalik `pro_unlock`):** cheksiz dublyaj, reklamasiz, cheksiz navbat (bepulda 2), uzun matn → ovoz (bepulda 1 500, Pro 200 000 belgi), 5 ta rang mavzusi, ovozni avto-saqlash.
+- **Reklama:** banner barcha ekranlar pastida (Pro da yo'q); interstitial dublyaj tugagach, har natija uchun bir marta.
+- **Test:** App access bo'limida tekshiruvchi uchun test API kalit (yoki Gemini bepul kaliti qo'llanmasi) bering.

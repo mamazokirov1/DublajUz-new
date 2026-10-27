@@ -13,7 +13,9 @@ import java.net.URL
  */
 class GeminiTranslator(
     private val apiKey: String,
-    private val model: String
+    private val model: String,
+    private val provider: AiProvider = AiProvider.GEMINI,
+    private val baseUrl: String = AiProvider.GEMINI.baseUrl
 ) {
     data class Item(val id: Int, val text: String, val maxChars: Int)
     data class Result(val uz: String, val short: String?)
@@ -23,30 +25,123 @@ class GeminiTranslator(
         val context: String = "",
         val address: String = "auto",   // auto | sen | siz
         val tone: String = "casual",    // casual | neutral | formal
-        val glossary: String = ""       // har qatorda "so'z = tarjima"
+        val glossary: String = "",      // har qatorda "so'z = tarjima"
+        val extraPrompt: String = "",   // mutaxassis qo'shimcha ko'rsatmasi
+        val temperature: Float = 0.3f
     )
 
     /** [fatal] = true: kalit noto'g'ri / ruxsat yo'q — qayta urinishdan foyda yo'q. */
     class GeminiException(message: String, val fatal: Boolean) : Exception(message)
 
-    private fun endpoint() =
-        "https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent"
+    private fun endpoint(): String = when (provider.wire) {
+        WireFormat.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent"
+        WireFormat.OPENAI -> baseUrl.trimEnd('/') + "/chat/completions"
+        WireFormat.ANTHROPIC -> "https://api.anthropic.com/v1/messages"
+    }
+
+    /** Provayderdan mavjud modellar ro'yxati. */
+    fun listModels(): List<String> {
+        val url = when (provider.wire) {
+            WireFormat.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200"
+            WireFormat.OPENAI -> baseUrl.trimEnd('/') + "/models"
+            WireFormat.ANTHROPIC -> "https://api.anthropic.com/v1/models?limit=100"
+        }
+        val conn = try { URL(url).openConnection() as HttpURLConnection }
+        catch (e: Exception) { throw GeminiException("Manzil noto'g'ri: ${e.message}", true) }
+        try {
+            conn.requestMethod = "GET"
+            conn.connectTimeout = 20_000
+            conn.readTimeout = 30_000
+            applyAuth(conn)
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+            if (code !in 200..299) throw GeminiException("HTTP $code ${errorMessage(text)}".trim(), true)
+            val root = JSONObject(text)
+            val out = ArrayList<String>()
+            if (provider.wire == WireFormat.GEMINI) {
+                val arr = root.optJSONArray("models") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val methods = o.optJSONArray("supportedGenerationMethods")
+                    var ok = methods == null
+                    if (methods != null) for (k in 0 until methods.length()) if (methods.optString(k) == "generateContent") ok = true
+                    val name = o.optString("name").removePrefix("models/")
+                    if (ok && name.startsWith("gemini")) out.add(name)
+                }
+            } else {
+                val arr = root.optJSONArray("data") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val id = arr.optJSONObject(i)?.optString("id").orEmpty()
+                    if (id.isNotBlank()) out.add(id)
+                }
+            }
+            return out.distinct().sorted()
+        } catch (e: GeminiException) {
+            throw e
+        } catch (e: java.io.IOException) {
+            throw GeminiException("Internet aloqasi: ${e.message}", false)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun applyAuth(conn: HttpURLConnection) {
+        when (provider.wire) {
+            WireFormat.GEMINI -> conn.setRequestProperty("x-goog-api-key", apiKey.trim())
+            WireFormat.OPENAI -> conn.setRequestProperty("Authorization", "Bearer " + apiKey.trim())
+            WireFormat.ANTHROPIC -> {
+                conn.setRequestProperty("x-api-key", apiKey.trim())
+                conn.setRequestProperty("anthropic-version", "2023-06-01")
+            }
+        }
+    }
+
+    private fun errorMessage(text: String): String = try {
+        val o = JSONObject(text)
+        val e = o.opt("error")
+        when (e) {
+            is JSONObject -> e.optString("message", "")
+            is String -> e
+            else -> o.optString("message", "")
+        }.take(200)
+    } catch (ex: Exception) { "" }
+
+    /** Provayderga mos so'rov tanasi. */
+    private fun buildBody(system: String, user: String, temperature: Float?, jsonMode: Boolean): JSONObject = when (provider.wire) {
+        WireFormat.GEMINI -> JSONObject()
+            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", system))))
+            .put("contents", JSONArray().put(JSONObject().put("role", "user")
+                .put("parts", JSONArray().put(JSONObject().put("text", user)))))
+            .put("generationConfig", JSONObject().apply {
+                if (temperature != null) put("temperature", temperature.toDouble())
+                if (jsonMode) put("responseMimeType", "application/json")
+            })
+        WireFormat.OPENAI -> JSONObject()
+            .put("model", model.trim())
+            .put("messages", JSONArray()
+                .put(JSONObject().put("role", "system").put("content", system))
+                .put(JSONObject().put("role", "user").put("content", user)))
+            .apply {
+                // OpenAI'ning yangi (GPT-5) modellari standartdan boshqa temperature'ni qabul qilmaydi
+                if (temperature != null && provider != AiProvider.OPENAI) put("temperature", temperature.toDouble())
+            }
+        WireFormat.ANTHROPIC -> JSONObject()
+            .put("model", model.trim())
+            .put("max_tokens", 4096)
+            .put("system", system)
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", user)))
+    }
 
     /** Sozlamalardagi "Kalitni tekshirish" tugmasi uchun. */
     fun test(): String = try {
-        val body = JSONObject().put(
-            "contents", JSONArray().put(
-                JSONObject().put(
-                    "parts", JSONArray().put(JSONObject().put("text", "Reply with one word: OK"))
-                )
-            )
-        )
+        val body = buildBody("You are a connection test.", "Reply with one word: OK", null, false)
         val text = extractText(post(body, retries = 1))
-        if (text.isNotBlank()) "Gemini ishlayapti ✓ (${model.trim()})" else "Gemini javob berdi, lekin matn bo'sh"
+        if (text.isNotBlank()) "${provider.label} ishlayapti ✓ (${model.trim()})" else "${provider.label} javob berdi, lekin matn bo'sh"
     } catch (e: GeminiException) {
-        "Gemini xato: ${e.message}"
+        "${provider.label} xato: ${e.message}"
     } catch (e: Exception) {
-        "Gemini bilan aloqa yo'q: ${e.message}"
+        "${provider.label} bilan aloqa yo'q: ${e.message}"
     }
 
     /**
@@ -79,19 +174,7 @@ class GeminiTranslator(
             user.append("\nNext segment after these (context only, do NOT output): ").append(nextHint).append('\n')
         }
 
-        val body = JSONObject()
-            .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT + styleBlock(style)))))
-            .put(
-                "contents", JSONArray().put(
-                    JSONObject().put("role", "user")
-                        .put("parts", JSONArray().put(JSONObject().put("text", user.toString())))
-                )
-            )
-            .put(
-                "generationConfig", JSONObject()
-                    .put("temperature", 0.3)
-                    .put("responseMimeType", "application/json")
-            )
+        val body = buildBody(SYSTEM_PROMPT + styleBlock(style), user.toString(), style.temperature, true)
 
         val text = extractText(post(body, retries = 3))
         return parse(text)
@@ -125,6 +208,8 @@ class GeminiTranslator(
             sb.append("- Mandatory glossary (always render these terms exactly like this):\n")
             for ((a, b) in terms) sb.append("    ").append(a.take(80)).append(" => ").append(b.take(80)).append('\n')
         }
+        val extra = s.extraPrompt.trim().take(1200)
+        if (extra.isNotEmpty()) sb.append("- Additional instructions from the user: ").append(extra).append('\n')
         return sb.toString()
     }
 
@@ -133,6 +218,11 @@ class GeminiTranslator(
         if (t.startsWith("```")) {
             t = t.removePrefix("```json").removePrefix("```JSON").removePrefix("```").trim()
             t = t.removeSuffix("```").trim()
+        }
+        if (!t.startsWith("[") && !t.startsWith("{")) {
+            val a = t.indexOf('[')
+            val b = t.lastIndexOf(']')
+            if (a >= 0 && b > a) t = t.substring(a, b + 1)
         }
         val arr: JSONArray = try {
             if (t.startsWith("[")) JSONArray(t) else {
@@ -160,7 +250,29 @@ class GeminiTranslator(
         return out
     }
 
-    private fun extractText(resp: JSONObject): String {
+    private fun extractText(resp: JSONObject): String = when (provider.wire) {
+        WireFormat.GEMINI -> extractGemini(resp)
+        WireFormat.OPENAI -> {
+            val msg = resp.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            val c = msg?.opt("content")
+            if (c is JSONArray) {
+                val sb = StringBuilder()
+                for (i in 0 until c.length()) sb.append(c.optJSONObject(i)?.optString("text", "").orEmpty())
+                sb.toString()
+            } else msg?.optString("content", "").orEmpty()
+        }
+        WireFormat.ANTHROPIC -> {
+            val arr = resp.optJSONArray("content") ?: JSONArray()
+            val sb = StringBuilder()
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                if (o.optString("type") == "text") sb.append(o.optString("text", ""))
+            }
+            sb.toString()
+        }
+    }
+
+    private fun extractGemini(resp: JSONObject): String {
         val block = resp.optJSONObject("promptFeedback")?.optString("blockReason", "") ?: ""
         if (block.isNotEmpty()) throw GeminiException("So'rov bloklandi: $block", false)
         val cands = resp.optJSONArray("candidates") ?: return ""
@@ -207,7 +319,7 @@ class GeminiTranslator(
             conn.readTimeout = 120_000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            conn.setRequestProperty("x-goog-api-key", apiKey.trim())
+            applyAuth(conn)
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
             val code = conn.responseCode
@@ -220,16 +332,12 @@ class GeminiTranslator(
                     throw GeminiException("Javob JSON emas", false)
                 }
             }
-            val msgFull: String = try {
-                JSONObject(text).optJSONObject("error")?.optString("message", "") ?: ""
-            } catch (e: Exception) {
-                ""
-            }
-            val msg = msgFull.take(200)
-            val fatal = code == 400 || code == 401 || code == 403 || code == 404
+            val msg = errorMessage(text)
+            val fatal = code == 400 || code == 401 || code == 402 || code == 403 || code == 404
             val hint = when (code) {
                 400 -> "so'rov yoki kalit noto'g'ri"
                 401, 403 -> "kalit noto'g'ri yoki ruxsat yo'q"
+                402 -> "hisobda mablag' yo'q (balansni to'ldiring)"
                 404 -> "model topilmadi (model nomini tekshiring)"
                 429 -> "limit tugadi, biroz kutish kerak"
                 else -> "server xatosi"

@@ -17,6 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import uz.dublaj.data.AppConfig
+import uz.dublaj.translate.activeKey
+import uz.dublaj.translate.newTranslator
+import uz.dublaj.translate.provider
 import uz.dublaj.data.ConfigStore
 import uz.dublaj.data.VoicePreset
 import uz.dublaj.data.applyPreset
@@ -117,8 +120,57 @@ class PipelineViewModel : ViewModel() {
         _translationUnits.value.map { it.uzText.trim() }.filter { it.isNotEmpty() }.joinToString(" ")
 
     /** Istalgan o'zbekcha matnni ovozga aylantirib, WAV fayl qiladi. */
-    fun speak(context: Context, text: String) {
+    /** Home'dagi "Matn → ovoz" tugmasi shu yorliqni qo'yadi; TextToolsScreen boshlang'ich yorliq sifatida oladi. */
+    private var pendingTextTab = 0
+    fun requestTextTab(tab: Int) { pendingTextTab = tab }
+    fun consumeTextTab(): Int = pendingTextTab.also { pendingTextTab = 0 }
+
+    fun textLimit(): Int =
+        if (_config.value.isPro) uz.dublaj.data.UsageStore.PRO_TEXT_CHARS else uz.dublaj.data.UsageStore.FREE_TEXT_CHARS
+
+    /** .txt faylni o'qiydi (UTF-8; BOM olib tashlanadi). Natija [onLoaded] ga beriladi. */
+    fun loadTextFile(context: Context, uri: Uri, onLoaded: (String) -> Unit) {
         val app = context.applicationContext
+        viewModelScope.launch {
+            val res = withContext(Dispatchers.IO) {
+                try {
+                    val bytes = app.contentResolver.openInputStream(uri)?.use { ins ->
+                        val out = java.io.ByteArrayOutputStream()
+                        val buf = ByteArray(64 * 1024)
+                        var total = 0
+                        while (true) {
+                            val n = ins.read(buf)
+                            if (n < 0) break
+                            total += n
+                            if (total > 4 * 1024 * 1024) throw IllegalStateException("Fayl juda katta (4 MB gacha bo'lsin)")
+                            out.write(buf, 0, n)
+                        }
+                        out.toByteArray()
+                    } ?: throw IllegalStateException("Fayl ochilmadi")
+                    var s = String(bytes, Charsets.UTF_8)
+                    if (s.startsWith("\uFEFF")) s = s.substring(1)
+                    Result.success(s.replace("\r\n", "\n").trim())
+                } catch (e: Exception) { Result.failure(e) }
+            }
+            res.onSuccess {
+                if (it.isBlank()) toast("Fayl bo'sh") else {
+                    onLoaded(it)
+                    toast("Fayl yuklandi: ${it.length} belgi")
+                }
+            }.onFailure { toast("Fayl o'qilmadi: ${it.message}") }
+        }
+    }
+
+    fun speak(context: Context, rawText: String) {
+        val app = context.applicationContext
+        val limit = textLimit()
+        val text = if (rawText.length > limit) {
+            toast(
+                if (_config.value.isPro) "Matn ${limit} belgigacha qisqartirildi"
+                else "Bepul versiyada $limit belgigacha o'qiladi. Pro bilan ${uz.dublaj.data.UsageStore.PRO_TEXT_CHARS} belgigacha."
+            )
+            rawText.take(limit)
+        } else rawText
         if (text.isBlank()) { toast("Avval matn kiriting"); return }
         if (isBusy) { toast("Hozir boshqa jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
         if (!_models.value.vits) { toast("Avval Sozlamalarda o'zbekcha ovoz fayllarini qo'shing"); return }
@@ -133,6 +185,9 @@ class PipelineViewModel : ViewModel() {
             }
             _audioResult.value = f
             _state.value = PipelineState.Idle
+            if (cfg.autoSaveAudio && cfg.isPro) {
+                try { withContext(Dispatchers.IO) { uz.dublaj.util.OutputUtils.saveAudioToMusic(app, f) } } catch (_: Exception) { }
+            }
             toast("Audio tayyor ✓")
             PipelineService.notifyDone(app, "Audio tayyor", "Matn o'zbekcha ovozga aylantirildi")
         }
@@ -460,21 +515,43 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
-    /** Sozlamalardagi "Kalitni tekshirish" tugmasi. */
+    private val _aiModels = MutableStateFlow<List<String>>(emptyList())
+    /** "Modellarni olish" natijasi (faol provayder uchun). */
+    val aiModels: StateFlow<List<String>> = _aiModels.asStateFlow()
+
+    /** Sozlamalardagi "Kalitni tekshirish" tugmasi (faol provayder uchun). */
     fun testGemini() {
         val cfg = _config.value
-        if (cfg.geminiKey.isBlank()) {
-            _modelStatus.value = "Avval Gemini kalitini kiriting"
+        val p = cfg.provider()
+        if (!cfg.onlineReady && cfg.activeKey().isBlank()) {
+            _modelStatus.value = "Avval ${p.label} kalitini kiriting"
             return
         }
         viewModelScope.launch {
-            _modelStatus.value = "Gemini tekshirilmoqda…"
-            val msg = withContext(Dispatchers.IO) {
-                uz.dublaj.translate.GeminiTranslator(
-                    cfg.geminiKey, cfg.geminiModel.ifBlank { uz.dublaj.translate.GeminiTranslator.DEFAULT_MODEL }
-                ).test()
-            }
+            _modelStatus.value = "${p.label} tekshirilmoqda…"
+            val msg = withContext(Dispatchers.IO) { cfg.newTranslator().test() }
             _modelStatus.value = msg
+        }
+    }
+
+    fun clearAiModels() { _aiModels.value = emptyList() }
+
+    /** Provayderdan mavjud modellar ro'yxatini oladi. */
+    fun fetchAiModels() {
+        val cfg = _config.value
+        if (cfg.activeKey().isBlank()) {
+            toast("Avval kalitni kiriting")
+            return
+        }
+        viewModelScope.launch {
+            _modelStatus.value = "Modellar olinmoqda…"
+            val res = withContext(Dispatchers.IO) {
+                try { Result.success(cfg.newTranslator().listModels()) } catch (e: Exception) { Result.failure(e) }
+            }
+            res.onSuccess {
+                _aiModels.value = it
+                _modelStatus.value = if (it.isEmpty()) "Modellar topilmadi" else "${it.size} ta model topildi ✓"
+            }.onFailure { _modelStatus.value = "Xato: ${it.message}" }
         }
     }
 
@@ -670,7 +747,15 @@ class PipelineViewModel : ViewModel() {
 
     fun addToQueue(context: Context, uris: List<Uri>) {
         val app = context.applicationContext
-        val items = uris.map { QueueItem(id = ++queueSeq, uri = it, name = FileUtils.displayName(app, it)) }
+        var picked = uris
+        if (!_config.value.isPro) {
+            val room = (uz.dublaj.data.UsageStore.FREE_QUEUE_ITEMS - _queue.value.count { it.status == QueueStatus.WAITING || it.status == QueueStatus.RUNNING }).coerceAtLeast(0)
+            if (picked.size > room) {
+                toast("Bepul versiyada navbatda ${uz.dublaj.data.UsageStore.FREE_QUEUE_ITEMS} tagacha video. Pro bilan cheksiz.")
+                picked = picked.take(room)
+            }
+        }
+        val items = picked.map { QueueItem(id = ++queueSeq, uri = it, name = FileUtils.displayName(app, it)) }
         _queue.update { it + items }
     }
 

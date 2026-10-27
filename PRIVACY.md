@@ -10,13 +10,13 @@ DublajUz — videodagi nutqni matnga aylantirib, o'zbek tiliga tarjima qiladigan
 
 - **Video va audio fayllar** telefonda qayta ishlanadi (matnga aylantirish, ovoz sintezi, birlashtirish). Ular hech qayerga yuklanmaydi.
 - **Natijalar, tarix, sozlamalar, xato jurnallari** faqat ilovaning ichki xotirasida turadi. Xato hisobotini siz o'zingiz "ulashsangizgina" boshqa joyga ketadi.
-- **Gemini API kaliti** (agar kiritsangiz) faqat telefonda saqlanadi.
+- **AI provayder API kalitlari** (Gemini, OpenAI, Anthropic va boshqalar — qaysini kiritsangiz) faqat telefonda saqlanadi.
 
 ## 2. Uchinchi tomonlarga yuboriladigan ma'lumotlar
 
 | Ma'lumot | Kimga | Nima uchun |
 |---|---|---|
-| Videodan olingan **matn** (transkripsiya), siz yozgan "video mavzusi", lug'at va tarjima sozlamalari | Google Gemini API (sizning o'z API kalitingiz bilan) | Tarjima qilish. Videoning o'zi yoki ovozi yuborilmaydi. Google'ning shartlari: https://policies.google.com/privacy |
+| Videodan olingan **matn** (transkripsiya), siz yozgan "video mavzusi", lug'at va tarjima sozlamalari | Siz tanlagan AI provayder: Google Gemini, OpenAI, Anthropic, DeepSeek, Groq, OpenRouter, Mistral yoki o'zingiz kiritgan OpenAI-mos xizmat (sizning o'z API kalitingiz bilan) | Tarjima qilish. Videoning o'zi yoki ovozi yuborilmaydi. Har bir provayderning o'z maxfiylik siyosati amal qiladi (masalan, https://policies.google.com/privacy, https://openai.com/policies/privacy-policy, https://www.anthropic.com/privacy) |
 | Reklama identifikatori (Advertising ID), taxminiy joylashuv (IP asosida), qurilma va reklama bilan o'zaro aloqa ma'lumotlari | Google AdMob | Faqat bepul (Free) versiyada reklama ko'rsatish. Hududingizga qarab avval rozilik so'raladi (Google UMP) |
 | Xarid holati | Google Play Billing | Pro versiyani ochish. To'lov ma'lumotlarini biz ko'rmaymiz |
 | IP manzil va yuklab olingan fayl nomi | Hugging Face (`huggingface.co`) va GitHub (`github.com`) | Nutq (Whisper) va o'zbekcha ovoz modellarini yuklab olish |
@@ -30,8 +30,8 @@ Bepul versiyada banner va to'liq ekranli reklamalar ko'rsatiladi. Yevropa Iqtiso
 ## 4. Saqlash muddati va o'chirish
 
 - Telefondagi ma'lumotlar ilovani o'chirib tashlaganingizda yoki Sozlamalardagi "tozalash" orqali o'chadi.
-- Gemini kalitini Sozlamalardan istalgan vaqtda o'chirishingiz mumkin.
-- Google (Gemini, AdMob, Play) saqlaydigan ma'lumotlar uning o'z siyosatiga bo'ysunadi; ularni Google hisobingiz sozlamalaridan boshqarasiz.
+- AI kalitlarini Sozlamalardan istalgan vaqtda o'chirishingiz mumkin.
+- Provayderlar (Gemini, OpenAI, Anthropic va boshqalar), AdMob va Google Play saqlaydigan ma'lumotlar uning o'z siyosatiga bo'ysunadi; ularni Google hisobingiz sozlamalaridan boshqarasiz.
 
 ## 5. Bolalar
 

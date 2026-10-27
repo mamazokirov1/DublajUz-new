@@ -22,6 +22,8 @@ import uz.dublaj.text.SentenceMerger
 import uz.dublaj.text.TextNormalizer
 import uz.dublaj.text.TranslationQa
 import uz.dublaj.translate.GeminiTranslator
+import uz.dublaj.translate.newTranslator
+import uz.dublaj.translate.provider
 import uz.dublaj.tts.ChatterboxClient
 import uz.dublaj.tts.VitsSynthesizer
 import uz.dublaj.util.FileUtils
@@ -327,7 +329,7 @@ class DubbingPipeline {
 
         if (!config.onlineReady) {
             throw IllegalStateException(
-                "Tarjima uchun Gemini API kaliti kerak. Sozlamalar → Onlayn tarjima bo'limida kalitni kiriting."
+                "Tarjima uchun AI kaliti kerak. Sozlamalar → Tarjima (AI) bo'limida provayderni tanlab, kalitni kiriting."
             )
         }
 
@@ -337,8 +339,8 @@ class DubbingPipeline {
         var flagged = 0
         var firstError: String? = null
 
-        progress(0.02f, "Gemini bilan tarjima…")
-        val gem = GeminiTranslator(config.geminiKey, config.geminiModel.ifBlank { GeminiTranslator.DEFAULT_MODEL })
+        progress(0.02f, "${config.provider().label} bilan tarjima…")
+        val gem = config.newTranslator()
         val online = HashMap<Int, GeminiTranslator.Result>()
         var onlineNote: String? = null
         var idx = 0
@@ -348,12 +350,12 @@ class DubbingPipeline {
                 // bo'lak: ko'pi bilan 18 gap yoki ~3500 belgi
                 val chunk = ArrayList<TranscriptUnit>()
                 var chars = 0
-                while (idx + chunk.size < src.size && chunk.size < 18 && (chunk.isEmpty() || chars < 3500)) {
+                while (idx + chunk.size < src.size && chunk.size < config.aiChunkSize.coerceIn(2, 30) && (chunk.isEmpty() || chars < 3500)) {
                     val u = src[idx + chunk.size]
                     chunk.add(u)
                     chars += u.text.length
                 }
-                progress(0.05f + 0.85f * idx / src.size, "Gemini ${idx + 1}–${idx + chunk.size}/${src.size}")
+                progress(0.05f + 0.85f * idx / src.size, "${config.provider().label} ${idx + 1}–${idx + chunk.size}/${src.size}")
                 val items = chunk.mapIndexed { k, u ->
                     val nextStart = src.getOrNull(idx + k + 1)?.start
                     val slot = maxOf(u.end - u.start, (nextStart ?: (u.end + 1.5)) - u.start)
@@ -373,7 +375,7 @@ class DubbingPipeline {
                         ctxPairs,
                         items,
                         nextHint,
-                        GeminiTranslator.Style(config.videoContext, config.addressForm, config.tone, config.glossary)
+                        GeminiTranslator.Style(config.videoContext, config.addressForm, config.tone, config.glossary, config.aiExtraPrompt, config.aiTemperature)
                     )
                 } catch (e: GeminiTranslator.GeminiException) {
                     Timber.w(e, "Gemini chunk xato")
@@ -410,7 +412,7 @@ class DubbingPipeline {
                 result.add(TranslationUnit(u.id, u.start, u.end, u.text, uz, u.language, qa != null, alts))
             } else {
                 failed++
-                if (firstError == null) firstError = "Gemini javob bermadi"
+                if (firstError == null) firstError = "AI javob bermadi"
                 result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true))
             }
         }
@@ -421,7 +423,7 @@ class DubbingPipeline {
 
         dir.approvedFlag.delete()
         saveTranslation(context, result)
-        val done = "Tarjima tayyor (Gemini: ${online.size}/${src.size})"
+        val done = "Tarjima tayyor (${config.provider().label}: ${online.size}/${src.size})"
         progress(1f, if (failed + flagged > 0) "Tayyor (${failed + flagged} ta gap tekshirilsin)" else done)
         return result
     }

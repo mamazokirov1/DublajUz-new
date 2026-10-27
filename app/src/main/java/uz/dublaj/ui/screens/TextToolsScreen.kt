@@ -29,6 +29,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import uz.dublaj.data.PipelineState
+import uz.dublaj.data.UsageStore
+import uz.dublaj.monetization.BillingManager
+import uz.dublaj.ui.components.ProBenefitsDialog
+import uz.dublaj.ui.theme.findActivity
 import uz.dublaj.ui.components.CollectUiEvents
 import uz.dublaj.ui.components.HelpSlider
 import uz.dublaj.ui.components.RunningBanner
@@ -56,7 +60,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
     val original by vm.plainOriginal.collectAsState()
     val audio by vm.audioResult.collectAsState()
     val host = remember { SnackbarHostState() }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(vm.consumeTextTab()) }
     var typed by rememberSaveable { mutableStateOf("") }
 
     CollectUiEvents(vm, host)
@@ -65,6 +69,22 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
         u?.let { vm.setVideo(it) }
     }
     val uzText = remember(units) { vm.plainUzbek() }
+    val txtPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        u?.let { vm.loadTextFile(context, it) { text -> typed = text } }
+    }
+    val limit = vm.textLimit()
+    var showPro by remember { mutableStateOf(false) }
+    if (showPro) {
+        ProBenefitsDialog(
+            remainingDubs = UsageStore.remainingDubs(context, config.isPro),
+            priceText = BillingManager.priceText(),
+            onUpgrade = {
+                showPro = false
+                context.findActivity()?.let { BillingManager.launchPurchase(it) }
+            },
+            onDismiss = { showPro = false }
+        )
+    }
 
     Scaffold(
         containerColor = cs.background,
@@ -160,23 +180,25 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                             }
                         } else {
                             var showRead by remember { mutableStateOf(false) }
-                            OutlinedTextField(
-                                value = typed,
-                                onValueChange = { typed = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                minLines = 6,
-                                label = { Text("O'zbekcha matnni kiriting yoki qo'ying") },
-                                supportingText = { Text("${typed.length} belgi") }
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { vm.speak(context, typed) },
-                                    enabled = !busy && typed.isNotBlank(),
-                                    modifier = Modifier.weight(1f).heightIn(min = 52.dp)
+                            // Asosiy tugma — eng tepada, KO'RINARLI
+                            Button(
+                                onClick = { vm.speak(context, typed) },
+                                enabled = !busy && typed.isNotBlank(),
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                                shape = MaterialTheme.shapes.large
+                            ) {
+                                Icon(Icons.Default.RecordVoiceOver, null)
+                                Spacer(Modifier.width(10.dp))
+                                Text("Ovozga aylantirish", style = MaterialTheme.typography.titleMedium)
+                            }
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                FilledTonalButton(
+                                    onClick = { txtPicker.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) },
+                                    enabled = !busy
                                 ) {
-                                    Icon(Icons.Default.RecordVoiceOver, null)
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("Ovozga aylantirish")
+                                    Icon(Icons.Default.FileOpen, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("TXT fayl yuklash")
                                 }
                                 OutlinedButton(
                                     onClick = {
@@ -184,9 +206,36 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                         val t = cm.primaryClip?.takeIf { it.itemCount > 0 }
                                             ?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
                                         if (t.isBlank()) vm.toast("Buferda matn yo'q") else typed = t
-                                    },
-                                    modifier = Modifier.heightIn(min = 52.dp)
-                                ) { Icon(Icons.Default.ContentPaste, contentDescription = "Qo'yish") }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.ContentPaste, null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Qo'yish")
+                                }
+                                if (typed.isNotEmpty()) {
+                                    TextButton(onClick = { typed = "" }) { Text("Tozalash") }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = typed,
+                                onValueChange = { typed = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 6,
+                                label = { Text("O'zbekcha matnni kiriting yoki qo'ying") },
+                                isError = typed.length > limit,
+                                supportingText = {
+                                    Text(
+                                        if (typed.length > limit) "${typed.length} / $limit belgi — ortig'i kesiladi"
+                                        else "${typed.length} / $limit belgi"
+                                    )
+                                }
+                            )
+                            if (!config.isPro && typed.length > UsageStore.FREE_TEXT_CHARS / 2) {
+                                TextButton(onClick = { showPro = true }) {
+                                    Icon(Icons.Default.Star, null, Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Pro bilan ${UsageStore.PRO_TEXT_CHARS} belgigacha")
+                                }
                             }
                             TextButton(
                                 onClick = { showRead = !showRead },

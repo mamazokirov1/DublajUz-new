@@ -59,6 +59,14 @@ data class AppConfig(
     val autoSaveGallery: Boolean = false,
     // ---- onlayn tarjima (Gemini)
     val onlineTranslate: Boolean = true,
+    /** Faol AI provayder identifikatori (AiProvider.id). */
+    val aiProvider: String = "gemini",
+    /** Boshqa provayderlar kalitlari: provayder id -> kalit. (Gemini kaliti geminiKey da.) */
+    val aiKeys: Map<String, String> = emptyMap(),
+    /** Provayder id -> model nomi (bo'sh = standart). */
+    val aiModels: Map<String, String> = emptyMap(),
+    /** "Boshqa (OpenAI-mos)" provayder uchun Base URL. */
+    val aiBaseUrl: String = "",
     val geminiKey: String = "",
     val geminiModel: String = "gemini-3.5-flash",
     /** Video mavzusi va uslubi haqida erkin izoh (Gemini'ga beriladi). */
@@ -84,6 +92,17 @@ data class AppConfig(
     val cbVoiceMode: String = "default",
     val cbCloneConsent: Boolean = false,
     val cbRefName: String = "",
+    // ---- ko'rinish (Pro)
+    /** Rang mavzusi: 0 = standart (bepul); 1.. = Pro mavzulari. */
+    val accent: Int = 0,
+    /** Ovoz tayyor bo'lganda avtomatik Musiqa papkasiga saqlash. */
+    val autoSaveAudio: Boolean = false,
+    /** Tarjima haroratini (ijodkorlik) qo'lda berish: 0.0..1.0 (OpenAI'dan boshqalarida). */
+    val aiTemperature: Float = 0.3f,
+    /** Bir so'rovda nechta gap tarjima qilinsin. */
+    val aiChunkSize: Int = 18,
+    /** Qo'shimcha tizim ko'rsatmasi (mutaxassislar uchun). */
+    val aiExtraPrompt: String = "",
     // ---- monetizatsiya
     /** Pro versiya ochilganmi (Play Billing orqali). */
     val isPro: Boolean = false
@@ -92,7 +111,15 @@ data class AppConfig(
     val chatterboxReady: Boolean get() = uz.dublaj.BuildConfig.CLOUD_TTS && ttsEngine == "chatterbox" && cbUrl.isNotBlank()
 
     /** Onlayn tarjima yoqilgan va kalit kiritilgan. */
-    val onlineReady: Boolean get() = onlineTranslate && geminiKey.isNotBlank()
+    val onlineReady: Boolean
+        get() {
+            if (!onlineTranslate) return false
+            val p = uz.dublaj.translate.AiProvider.byId(aiProvider)
+            val key = if (p == uz.dublaj.translate.AiProvider.GEMINI) geminiKey else aiKeys[aiProvider].orEmpty()
+            if (p.customUrl && aiBaseUrl.isBlank()) return false
+            // lokal serverlar (Ollama) uchun kalit shart emas, lekin maydon bo'sh bo'lmasin
+            return key.isNotBlank()
+        }
 }
 
 enum class VoicePreset(val label: String) { STANDARD("Standart"), NATURAL("Tabiiy"), CLEAR("Aniq"), FAST("Tez") }

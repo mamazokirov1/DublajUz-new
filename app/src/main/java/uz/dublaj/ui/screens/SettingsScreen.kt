@@ -19,6 +19,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import uz.dublaj.ui.theme.AccentPalettes
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import uz.dublaj.translate.AiProvider
+import uz.dublaj.translate.activeKey
+import uz.dublaj.translate.activeModel
+import uz.dublaj.translate.provider
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -124,13 +133,49 @@ fun SettingsScreen(
                         )
                     }
                     Text(
-                        if (expert) "Hamma sozlamalar ko'rinadi."
-                        else "Faqat eng kerakli sozlamalar. Ko'proq nazorat uchun Ilg'or rejimni yoqing.",
+                        if (expert) "Ilg'or: barcha sozlamalar ochiq — ovoz tembri, sinxronlash, aralashtirish, AI modeli va boshqalar."
+                        else "Oddiy: faqat kerakli narsalar — AI kaliti, modellar va ovoz tezligi. Boshlovchilar uchun tavsiya etiladi.",
                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                     )
                 }
             }
 
+
+            // ---------------- tezkor boshlash (oddiy rejimda har doim, ilg'orda tayyor bo'lmasa)
+            val setupDone = models.whisper && config.onlineReady && models.vits
+            if (!expert || !setupDone) {
+                Card(
+                    Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = if (setupDone) cs.secondaryContainer else cs.tertiaryContainer)
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            if (setupDone) "Hammasi tayyor ✓" else "Boshlash uchun 3 qadam",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        @Composable
+                        fun stepLine(ok: Boolean, text: String) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(
+                                    if (ok) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                    null, modifier = Modifier.size(20.dp)
+                                )
+                                Text(text, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                        stepLine(config.onlineReady, "1. Tarjima: pastdagi \"Tarjima (AI)\" bo'limida provayderni tanlab, kalit kiriting")
+                        stepLine(models.whisper, "2. Matn aniqlash modelini yuklab oling (\"Yuklab olinadigan komponentlar\")")
+                        stepLine(models.vits, "3. O'zbekcha ovoz modelini yuklab oling (xuddi shu bo'limda)")
+                        if (!setupDone) {
+                            Text(
+                                "Har bir bo'lim ichida qadamma-qadam yo'riqnoma bor. Yo'riqnomani ochish uchun bo'lim sarlavhasini bosing.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
 
             // ---------------- Pro / limit
             val isPro = config.isPro
@@ -221,33 +266,76 @@ fun SettingsScreen(
                 }
             }
 
-            // ---------------- onlayn tarjima (Gemini)
+            // ---------------- tarjima (AI provayderlar)
             val uriHandler = LocalUriHandler.current
             var showKey by remember { mutableStateOf(false) }
+            val prov = config.provider()
+            val foundModels by vm.aiModels.collectAsState()
+            val curKey = config.activeKey()
+            val curModel = config.activeModel()
+            fun setKey(v: String) {
+                vm.setConfig(
+                    if (prov == AiProvider.GEMINI) config.copy(geminiKey = v.trim())
+                    else config.copy(aiKeys = config.aiKeys + (prov.id to v.trim()))
+                )
+            }
+            fun setModel(v: String) {
+                vm.setConfig(
+                    if (prov == AiProvider.GEMINI) config.copy(geminiModel = v.trim())
+                    else config.copy(aiModels = config.aiModels + (prov.id to v.trim()))
+                )
+            }
             SectionCard(
                 icon = Icons.Default.Translate,
-                title = "Onlayn tarjima (Gemini)",
-                subtitle = if (config.onlineReady) "Yoqilgan ✓ — Gemini ishlaydi"
-                else "Kalit kiriting — tarjima uchun majburiy",
-                initiallyExpanded = false
+                title = "Tarjima (AI)",
+                subtitle = if (config.onlineReady) "Yoqilgan ✓ — ${prov.label}"
+                else "Provayderni tanlab, kalit kiriting",
+                initiallyExpanded = !config.onlineReady
             ) {
                 Text(
-                    "Gemini gaplarni kontekst bilan tarjima qiladi. Internet va API kalit kerak. " +
-                        "Faqat matn (videoning o'zi emas) Google serveriga yuboriladi.",
+                    "Tarjimani sun'iy intellekt qiladi. Provayderni o'zingiz tanlaysiz — har biri uchun alohida kalit saqlanadi. " +
+                        "Faqat matn (videoning o'zi emas) tanlangan provayder serveriga yuboriladi.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
                 SwitchRow(
-                    "Gemini bilan tarjima qilish",
+                    "AI bilan tarjima qilish",
                     "Kalit kiritilgach ishlaydi. Tarjima uchun majburiy.",
                     config.onlineTranslate
                 ) { vm.setConfig(config.copy(onlineTranslate = it)) }
+
+                Text("Provayder", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AiProvider.values().forEach { p ->
+                        FilterChip(
+                            selected = prov == p,
+                            onClick = {
+                                vm.clearAiModels()
+                                vm.setConfig(config.copy(aiProvider = p.id))
+                            },
+                            label = { Text(p.label) }
+                        )
+                    }
+                }
+                Text(prov.pricing, style = MaterialTheme.typography.bodySmall, color = cs.tertiary)
+
+                if (prov.customUrl) {
+                    OutlinedTextField(
+                        value = config.aiBaseUrl,
+                        onValueChange = { vm.setConfig(config.copy(aiBaseUrl = it.trim())) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        singleLine = true,
+                        label = { Text("Base URL") },
+                        supportingText = { Text("Masalan: https://api.together.xyz/v1") }
+                    )
+                }
                 OutlinedTextField(
-                    value = config.geminiKey,
-                    onValueChange = { vm.setConfig(config.copy(geminiKey = it.trim())) },
+                    value = curKey,
+                    onValueChange = { setKey(it) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
                     singleLine = true,
-                    label = { Text("Gemini API kaliti") },
+                    label = { Text("${prov.label} API kaliti") },
                     visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation()
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -256,38 +344,74 @@ fun SettingsScreen(
                     }
                     Button(
                         onClick = { vm.testGemini() },
-                        enabled = config.geminiKey.isNotBlank(),
+                        enabled = curKey.isNotBlank() && (!prov.customUrl || config.aiBaseUrl.isNotBlank()),
                         shape = MaterialTheme.shapes.medium
-                    ) { Text("Kalitni tekshirish") }
+                    ) { Text("Tekshirish") }
+                    OutlinedButton(
+                        onClick = { uriHandler.openUri(prov.keyUrl) },
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Default.Link, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Kalit olish")
+                    }
                 }
+                status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary) }
+
                 Text("Kalitni qanday olish mumkin:", style = MaterialTheme.typography.labelLarge)
                 Text(
-                    "1. Pastdagi tugmani bosing (Google AI Studio ochiladi).\n" +
-                        "2. Google akkauntingiz bilan kiring.\n" +
-                        "3. \"Create API key\" tugmasini bosing.\n" +
-                        "4. Chiqqan kalitni nusxalab, yuqoridagi maydonga qo'ying.\n" +
-                        "5. \"Kalitni tekshirish\" ni bosing, so'ng tarjimani yoqing.",
+                    prov.steps.mapIndexed { i, s -> "${i + 1}. $s" }.joinToString("\n"),
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
-                OutlinedButton(
-                    onClick = { uriHandler.openUri(GeminiTranslator.KEY_URL) },
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Icon(Icons.Default.Link, null)
-                    Spacer(Modifier.width(6.dp))
-                    Text("Kalit olish (aistudio.google.com/apikey)")
+
+                // ---- model
+                Text("Model", style = MaterialTheme.typography.labelLarge)
+                if (prov.suggested.isNotEmpty()) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        prov.suggested.forEach { m ->
+                            FilterChip(
+                                selected = curModel == m,
+                                onClick = { setModel(m) },
+                                label = { Text(m) }
+                            )
+                        }
+                    }
                 }
-                if (expert) {
+                if (expert || prov.customUrl) {
                     OutlinedTextField(
-                        value = config.geminiModel,
-                        onValueChange = { vm.setConfig(config.copy(geminiModel = it.trim())) },
+                        value = if (prov == AiProvider.GEMINI) config.geminiModel else config.aiModels[prov.id].orEmpty(),
+                        onValueChange = { setModel(it) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium,
                         singleLine = true,
-                        label = { Text("Gemini modeli") },
-                        supportingText = { Text("Standart: ${GeminiTranslator.DEFAULT_MODEL}") }
+                        label = { Text("Model nomi (qo'lda)") },
+                        supportingText = {
+                            Text(
+                                if (prov.defaultModel.isBlank()) "Majburiy: xizmat hujjatidagi model nomini yozing"
+                                else "Bo'sh qoldirsangiz: ${prov.defaultModel}"
+                            )
+                        }
+                    )
+                    OutlinedButton(
+                        onClick = { vm.fetchAiModels() },
+                        enabled = curKey.isNotBlank() && (!prov.customUrl || config.aiBaseUrl.isNotBlank()),
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Mavjud modellarni olish") }
+                    if (foundModels.isNotEmpty()) {
+                        Text("Topilgan modellar (bosib tanlang):", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            foundModels.take(40).forEach { m ->
+                                AssistChip(onClick = { setModel(m) }, label = { Text(m, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        "Model eskirgan bo'lsa (xato: \"model topilmadi\"), Ilg'or rejimda yangi model nomini yozishingiz mumkin.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                     )
                 }
+
                 Text("Tarjima uslubi", style = MaterialTheme.typography.labelLarge)
                 OutlinedTextField(
                     value = config.videoContext,
@@ -329,11 +453,36 @@ fun SettingsScreen(
                     label = { Text("Lug'at (ixtiyoriy)") },
                     supportingText = { Text("Har qatorda: so'z = tarjima. Masalan: фура = yuk mashinasi") }
                 )
-                status?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = cs.primary)
+                if (expert) {
+                    HorizontalDivider()
+                    Text("Ilg'or: AI sozlamalari", style = MaterialTheme.typography.titleMedium)
+                    if (prov != AiProvider.OPENAI) {
+                        HelpSlider(
+                            title = "Ijodkorlik (temperature)",
+                            valueText = "%.2f".format(config.aiTemperature),
+                            help = "Past (0.1–0.3) — aniq va barqaror tarjima. Yuqori — erkinroq, lekin xato ehtimoli ko'proq.",
+                            value = config.aiTemperature, range = 0f..1f
+                        ) { vm.setConfig(config.copy(aiTemperature = it)) }
+                    }
+                    HelpSlider(
+                        title = "Bir so'rovda gaplar soni",
+                        valueText = "${config.aiChunkSize}",
+                        help = "Ko'p — tezroq va arzonroq, lekin xato bo'lsa ko'p gap yo'qoladi. Kam — sekinroq, lekin barqarorroq.",
+                        value = config.aiChunkSize.toFloat(), range = 4f..30f
+                    ) { vm.setConfig(config.copy(aiChunkSize = it.toInt())) }
+                    OutlinedTextField(
+                        value = config.aiExtraPrompt,
+                        onValueChange = { vm.setConfig(config.copy(aiExtraPrompt = it.take(1200))) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = MaterialTheme.shapes.medium,
+                        minLines = 2,
+                        maxLines = 6,
+                        label = { Text("Qo'shimcha ko'rsatma (inglizcha yoki o'zbekcha)") },
+                        supportingText = { Text("AI ga beriladigan qo'shimcha qoida. Masalan: \"Avtomobil atamalarini rus tilidagidek qoldir\"") }
+                    )
                 }
                 Text(
-                    "Kalit faqat shu telefonda saqlanadi va hisobotlarga qo'shilmaydi. Bepul limitlar Google tomonidan o'zgarishi mumkin.",
+                    "Kalit faqat shu telefonda saqlanadi va hisobotlarga qo'shilmaydi. Bepul limitlar provayder tomonidan o'zgarishi mumkin.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
             }
@@ -439,12 +588,12 @@ fun SettingsScreen(
                 initiallyExpanded = !allReady
             ) {
                 Text(
-                    "Matn aniqlash va ovoz offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (Sozlamalar → Onlayn tarjima).",
+                    "Matn aniqlash va ovoz offline ishlaydi. Tarjima uchun AI kaliti kerak (Sozlamalar → Tarjima (AI)).",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     StatusPill("Matn aniqlash", models.whisper)
-                    StatusPill("Tarjima (Gemini)", config.onlineReady)
+                    StatusPill("Tarjima (AI)", config.onlineReady)
                     StatusPill("Ovoz", models.vits)
                 }
                 status?.let {
@@ -717,6 +866,30 @@ fun SettingsScreen(
                         )
                     }
                 }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Rang mavzusi", style = MaterialTheme.typography.labelLarge)
+                    if (!config.isPro) ProTag()
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    AccentPalettes.forEachIndexed { i, pal ->
+                        FilterChip(
+                            selected = (if (config.isPro) config.accent else 0) == i,
+                            onClick = {
+                                if (i == 0 || config.isPro) {
+                                    ThemeSettings.accent = i
+                                    vm.setConfig(config.copy(accent = i))
+                                } else showProDialog = true
+                            },
+                            leadingIcon = {
+                                Box(
+                                    Modifier.size(14.dp).clip(CircleShape)
+                                        .background(pal.light)
+                                )
+                            },
+                            label = { Text(if (i == 0 || config.isPro) pal.name else "🔒 ${pal.name}") }
+                        )
+                    }
+                }
                 if (Build.VERSION.SDK_INT >= 31) {
                     SwitchRow(
                         "Telefon ranglari", "Android 12+ (Material You): ranglar fon rasmingizdan olinadi.",
@@ -781,6 +954,22 @@ fun SettingsScreen(
                         "Ilovani o'chirsangiz ham yo'qolmaydi (Android 10+).",
                     config.autoSaveGallery
                 ) { vm.setConfig(config.copy(autoSaveGallery = it)) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Ovozni avtomatik saqlash", style = MaterialTheme.typography.labelLarge)
+                            if (!config.isPro) ProTag()
+                        }
+                        Text(
+                            "Matn → ovoz tayyor bo'lganda audio Music/DublajUz papkasiga ham saqlanadi.",
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = config.autoSaveAudio && config.isPro,
+                        onCheckedChange = { if (config.isPro) vm.setConfig(config.copy(autoSaveAudio = it)) else showProDialog = true }
+                    )
+                }
                 OutlinedButton(
                     onClick = { vm.clearWork(context) },
                     enabled = !busy,

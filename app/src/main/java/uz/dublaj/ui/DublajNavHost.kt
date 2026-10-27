@@ -6,7 +6,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import uz.dublaj.monetization.AdsManager
+import uz.dublaj.monetization.BannerAd
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -44,6 +59,20 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
         }
     }
 
+    // Rang mavzusi va Pro holati
+    val config by vm.config.collectAsState()
+    LaunchedEffect(config.accent, config.isPro) {
+        uz.dublaj.ui.theme.ThemeSettings.accent = config.accent
+        uz.dublaj.ui.theme.ThemeSettings.pro = config.isPro
+    }
+    // Banner BARCHA ekranlar tagida (Pro da ko'rinmaydi)
+    val showBanner = !config.isPro && AdsManager.adsReady
+    Column(Modifier.fillMaxSize()) {
+      Box(
+        Modifier
+            .weight(1f)
+            .then(if (showBanner) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)
+      ) {
     NavHost(
         navController = navController,
         startDestination = Routes.HOME,
@@ -90,5 +119,15 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
         composable(Routes.SETTINGS) {
             SettingsScreen(vm = vm, onBack = { navController.popBackStack() })
         }
+    }
+    }
+      if (showBanner) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .navigationBarsPadding()
+        ) { BannerAd() }
+      }
     }
 }

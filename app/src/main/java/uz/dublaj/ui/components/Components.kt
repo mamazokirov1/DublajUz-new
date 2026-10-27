@@ -1,6 +1,7 @@
 package uz.dublaj.ui.components
 
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Palette
 
 import android.Manifest
 import android.content.Context
@@ -18,6 +19,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,7 +76,13 @@ fun GradientHero(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-            .background(Brush.linearGradient(listOf(Brand.Indigo, Brand.Violet, Brand.Teal)))
+            .background(
+                Brush.linearGradient(
+                    if (uz.dublaj.ui.theme.ThemeSettings.pro && uz.dublaj.ui.theme.ThemeSettings.accent != 0)
+                        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.75f), MaterialTheme.colorScheme.secondary)
+                    else listOf(Brand.Indigo, Brand.Violet, Brand.Teal)
+                )
+            )
     ) {
         Canvas(Modifier.matchParentSize()) {
             val n = 30
@@ -98,14 +106,6 @@ fun GradientHero(
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.headlineMedium, color = Color.White)
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.85f))
-            }
-            if (onTools != null) {
-                IconButton(onClick = onTools) {
-                    Icon(Icons.Default.RecordVoiceOver, contentDescription = "Matn va ovoz", tint = Color.White)
-                }
-            }
-            IconButton(onClick = onQueue) {
-                Icon(Icons.Default.Queue, contentDescription = "Navbat", tint = Color.White)
             }
             IconButton(onClick = onHistory) {
                 Icon(Icons.Default.History, contentDescription = "Tarix", tint = Color.White)
@@ -401,7 +401,11 @@ fun ProBenefitsDialog(
     data class Benefit(val icon: ImageVector, val title: String, val desc: String)
     val benefits = listOf(
         Benefit(Icons.Default.AllInclusive, "Cheksiz dublyaj", "Kunlik limit yo'q — istalgancha video"),
-        Benefit(Icons.Default.Block, "Reklamasiz", "Banner va to'liq ekran reklamalar ko'rinmaydi")
+        Benefit(Icons.Default.Block, "Reklamasiz", "Banner va to'liq ekran reklamalar ko'rinmaydi"),
+        Benefit(Icons.Default.Queue, "Cheksiz navbat", "Ko'p videoni birdan qo'ying, ular ketma-ket dublyaj bo'ladi (bepulda 2 ta)"),
+        Benefit(Icons.Default.RecordVoiceOver, "Uzun matnlarni ovozlashtirish", "TXT fayl yoki matn 200 000 belgigacha (bepulda 1 500)"),
+        Benefit(Icons.Default.Palette, "Maxsus rang mavzulari", "5 ta qo'shimcha dizayn: Okean, Zumrad, Quyosh botishi va boshqalar"),
+        Benefit(Icons.Default.Bolt, "Bir marta to'lov", "Obuna emas: bir marta oling — doim ishlaydi")
     )
 
     AlertDialog(
@@ -422,7 +426,10 @@ fun ProBenefitsDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 if (remainingDubs <= 0) {
                     Text(
                         "Bugungi bepul limit tugadi. Pro bilan cheksiz davom eting.",

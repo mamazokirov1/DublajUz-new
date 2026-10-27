@@ -32,7 +32,22 @@ import androidx.core.view.WindowCompat
 object ThemeSettings {
     var mode by mutableIntStateOf(0)
     var dynamic by mutableStateOf(false)
+    /** Tanlangan rang mavzusi (0 = standart). Faqat Pro da amal qiladi. */
+    var accent by mutableIntStateOf(0)
+    var pro by mutableStateOf(false)
 }
+
+/** Pro rang mavzulari: nomi, yorug' primary, yorug' container, qorong'i primary, qorong'i container. */
+data class AccentPalette(val name: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color)
+
+val AccentPalettes: List<AccentPalette> = listOf(
+    AccentPalette("Binafsha (standart)", Color(0xFF5B3FD8), Color(0xFFE6DFFF), Color(0xFFB9AAFF), Color(0xFF4328B8)),
+    AccentPalette("Okean", Color(0xFF0B63D6), Color(0xFFD6E6FF), Color(0xFF9CC4FF), Color(0xFF0A3F8C)),
+    AccentPalette("Zumrad", Color(0xFF0B8A5D), Color(0xFFCFF5E4), Color(0xFF6FE0B0), Color(0xFF06583B)),
+    AccentPalette("Quyosh botishi", Color(0xFFD9480F), Color(0xFFFFE0CC), Color(0xFFFFB38A), Color(0xFF8A2E06)),
+    AccentPalette("Atirgul", Color(0xFFC2255C), Color(0xFFFFDDE8), Color(0xFFFFA8C5), Color(0xFF7D1238)),
+    AccentPalette("Oltin", Color(0xFF9A6B00), Color(0xFFFFEFC2), Color(0xFFFFD566), Color(0xFF5E4100))
+)
 
 object Brand {
     val Indigo = Color(0xFF4A2FD0)
@@ -118,11 +133,19 @@ fun DublajTheme(content: @Composable () -> Unit) {
         else -> isSystemInDarkTheme()
     }
     val context = LocalContext.current
+    val accentIdx = if (ThemeSettings.pro) ThemeSettings.accent.coerceIn(0, AccentPalettes.size - 1) else 0
+    val pal = AccentPalettes[accentIdx]
     val scheme = when {
         ThemeSettings.dynamic && Build.VERSION.SDK_INT >= 31 ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> DarkColors
-        else -> LightColors
+        dark -> if (accentIdx == 0) DarkColors else DarkColors.copy(
+            primary = pal.dark, primaryContainer = pal.darkContainer,
+            onPrimary = Color(0xFF101010), onPrimaryContainer = Color.White
+        )
+        else -> if (accentIdx == 0) LightColors else LightColors.copy(
+            primary = pal.light, primaryContainer = pal.lightContainer,
+            onPrimary = Color.White, onPrimaryContainer = Color(0xFF101010)
+        )
     }
     val view = LocalView.current
     if (!view.isInEditMode) {

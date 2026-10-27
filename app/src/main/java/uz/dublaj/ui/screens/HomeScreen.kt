@@ -146,11 +146,7 @@ fun HomeScreen(
     Scaffold(
         containerColor = cs.background,
         snackbarHost = { SnackbarHost(host) },
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            // Pro da BannerAd ichida hech narsa chizilmaydi
-            Column(Modifier.navigationBarsPadding()) { BannerAd(Modifier.padding(bottom = 4.dp)) }
-        }
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
         Column(
             modifier = Modifier
@@ -166,6 +162,47 @@ fun HomeScreen(
                 onQueue = onQueue,
                 onTools = onTextTools
             )
+
+            // ---- tezkor amallar: Matn → ovoz KO'RINARLI joyda
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                QuickActionTile(
+                    title = "Matn → ovoz",
+                    subtitle = "Yozing yoki TXT fayl yuklang — o'zbekcha ovoz",
+                    icon = Icons.Default.RecordVoiceOver,
+                    highlighted = true,
+                    modifier = Modifier.weight(1f),
+                    onClick = { vm.requestTextTab(1); onTextTools() }
+                )
+                QuickActionTile(
+                    title = "Videodan matn",
+                    subtitle = "Videodagi gaplarni matn qilib olish",
+                    icon = Icons.Default.TextSnippet,
+                    modifier = Modifier.weight(1f),
+                    onClick = { vm.requestTextTab(0); onTextTools() }
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                QuickActionTile(
+                    title = "Navbat",
+                    subtitle = if (config.isPro) "Ko'p videoni ketma-ket dublyaj" else "Ko'p video (bepulda ${UsageStore.FREE_QUEUE_ITEMS} ta)",
+                    icon = Icons.Default.Queue,
+                    modifier = Modifier.weight(1f),
+                    onClick = onQueue
+                )
+                QuickActionTile(
+                    title = "Tarix",
+                    subtitle = "Tayyor videolar",
+                    icon = Icons.Default.History,
+                    modifier = Modifier.weight(1f),
+                    onClick = onHistory
+                )
+            }
 
             // ---- limit badge
             val isPro = config.isPro
@@ -236,9 +273,12 @@ fun HomeScreen(
             }
 
             Column(
-                Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),
+                Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp).navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                if (!isPro) {
+                    ProPromoCard(priceText = BillingManager.priceText(), onClick = { showProDialog = true })
+                }
                 // ---- modellar
                 if (!modelsReady) {
                     SetupCard(
@@ -549,7 +589,7 @@ private fun SetupCard(
                 Text("Dastlabki sozlash", style = MaterialTheme.typography.titleMedium)
             }
             Text(
-                "Matn aniqlash va o'zbekcha ovoz offline ishlaydi. Tarjima uchun Gemini API kaliti kerak (Sozlamalar).",
+                "Matn aniqlash va o'zbekcha ovoz offline ishlaydi. Tarjima uchun AI kaliti kerak (Sozlamalar → Tarjima).",
                 style = MaterialTheme.typography.bodySmall
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -668,7 +708,7 @@ private fun hintFor(message: String): String? {
     val m = message.lowercase()
     return when {
         "vits" in m || "ovoz komponenti" in m -> "Sozlamalar bo'limida o'zbekcha ovoz fayllarini (.onnx va .json) qo'shing."
-        "gemini" in m || "api" in m || "kalit" in m -> "Sozlamalar → Onlayn tarjima bo'limida Gemini API kalitini kiriting."
+        "gemini" in m || "api" in m || "kalit" in m -> "Sozlamalar → Tarjima (AI) bo'limida provayderni tanlab, API kalitini kiriting."
         "joy" in m || "space" in m || "xotira" in m -> "Telefonda bo'sh joy yetarli emas. Sozlamalar → Xotira bo'limida vaqtinchalik fayllarni tozalang."
         "kodek" in m || "codec" in m -> "Videoni H.264 (MP4) formatiga o'giring yoki boshqa video tanlang."
         "whisper" in m || "matn aniqlash" in m -> "Sozlamalar bo'limida matn aniqlash komponentini tekshiring."

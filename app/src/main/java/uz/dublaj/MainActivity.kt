@@ -27,6 +27,8 @@ class MainActivity : ComponentActivity() {
         uz.dublaj.data.ConfigStore.load(this).let {
             uz.dublaj.ui.theme.ThemeSettings.mode = it.themeMode
             uz.dublaj.ui.theme.ThemeSettings.dynamic = it.dynamicColor
+            uz.dublaj.ui.theme.ThemeSettings.accent = it.accent
+            uz.dublaj.ui.theme.ThemeSettings.pro = it.isPro
         }
         handleIntent(intent)
         uz.dublaj.monetization.ConsentManager.gatherAndInit(this)
