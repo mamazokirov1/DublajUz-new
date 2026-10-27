@@ -1,4 +1,4 @@
-# DublajUz (Android)
+# DublajUz (Android)Shoirjon
 
 Offline o'zbekcha video dublyaj: **Whisper (STT) → Gemini (tarjima) → tahrir → VITS (o'zbek TTS) → MP4**.
 
