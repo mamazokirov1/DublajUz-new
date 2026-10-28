@@ -97,6 +97,10 @@ data class AppConfig(
     val accent: Int = 0,
     /** Ovoz tayyor bo'lganda avtomatik Musiqa papkasiga saqlash. */
     val autoSaveAudio: Boolean = false,
+    /** Matn ajratish: nutqsiz (sukunat) oraliqlarni qirqib, tezroq ishlash. */
+    val sttSkipSilence: Boolean = true,
+    /** Matn ajratish protsessor oqimlari: 0 = avtomatik. */
+    val sttThreads: Int = 0,
     /** Tarjima haroratini (ijodkorlik) qo'lda berish: 0.0..1.0 (OpenAI'dan boshqalarida). */
     val aiTemperature: Float = 0.3f,
     /** Bir so'rovda nechta gap tarjima qilinsin. */

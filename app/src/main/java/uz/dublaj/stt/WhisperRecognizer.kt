@@ -4,6 +4,7 @@ import android.content.Context
 import dev.ffmpegkit.whisper.Whisper
 import dev.ffmpegkit.whisper.WhisperConfig
 import dev.ffmpegkit.whisper.WhisperModel
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import uz.dublaj.data.TranscriptUnit
 import uz.dublaj.util.WorkDir
@@ -17,6 +18,7 @@ class WhisperRecognizer(private val context: Context) {
 
     private var model: WhisperModel? = null
     private var loadedModelPath: String? = null
+    private val modelHint: String get() = loadedModelPath?.lowercase().orEmpty()
 
     data class Result(
         val language: String,
@@ -45,14 +47,36 @@ class WhisperRecognizer(private val context: Context) {
     suspend fun transcribe(
         audioFile: File,
         language: String = "auto",
+        threads: Int = 0,
         onProgress: (Float, String) -> Unit = { _, _ -> }
     ): Result {
         val m = model ?: throw IllegalStateException("Model yuklanmagan — ensureModel() chaqiring")
         if (!audioFile.isFile) throw IllegalArgumentException("Audio yo'q: $audioFile")
 
         val langCode = language.lowercase().ifBlank { "auto" }
-        onProgress(0.2f, "STT ishlamoqda (bu biroz vaqt olishi mumkin)…")
-        val result = Whisper.transcribe(m, audioFile.absolutePath, WhisperConfig(language = langCode))
+        val nThreads = if (threads > 0) threads else autoThreads()
+        val audioSec = ((audioFile.length() - 44).coerceAtLeast(0) / 2.0 / 16000.0)
+        Timber.i("Whisper: ${"%.0f".format(audioSec)}s audio, $nThreads oqim, til=$langCode")
+        onProgress(0.05f, "Matn ajratilmoqda…")
+        // Native chaqiruv jarayon haqida xabar bermaydi: taxminiy progress va o'tgan vaqtni ko'rsatamiz
+        val speed = if (modelHint.contains("tiny")) 6.0 else if (modelHint.contains("small")) 1.2 else 2.8
+        val est = (audioSec / speed).coerceAtLeast(5.0)
+        val startMs = System.currentTimeMillis()
+        val result = kotlinx.coroutines.coroutineScope {
+            val ticker = launch {
+                while (true) {
+                    kotlinx.coroutines.delay(1000)
+                    val el = (System.currentTimeMillis() - startMs) / 1000.0
+                    val frac = 1.0 - Math.exp(-el / est)
+                    onProgress((0.05 + 0.85 * frac).toFloat(), "Matn ajratilmoqda… ${fmt(el)}")
+                }
+            }
+            try {
+                Whisper.transcribe(m, audioFile.absolutePath, WhisperConfig(language = langCode, threads = nThreads))
+            } finally {
+                ticker.cancel()
+            }
+        }
 
         onProgress(0.9f, "Segmentlar tahlil…")
         val detected = if (langCode == "auto") detectLangHint(result.text) else langCode
@@ -70,6 +94,11 @@ class WhisperRecognizer(private val context: Context) {
 
         onProgress(1f, "Tayyor: ${units.size} segment")
         return Result(detected, units, result.text.trim())
+    }
+
+    private fun fmt(sec: Double): String {
+        val s = sec.toInt()
+        return "%d:%02d".format(s / 60, s % 60)
     }
 
     fun release() {
@@ -112,13 +141,33 @@ class WhisperRecognizer(private val context: Context) {
     }
 
     companion object {
+        /**
+         * Qaysi protsessor oqimlari soni tezroq: odatda "katta" yadrolar soni (4–6).
+         * Hamma yadroni ishlatish (kichik yadrolar bilan) ko'pincha sekinlashtiradi.
+         */
+        fun autoThreads(): Int {
+            val cores = Runtime.getRuntime().availableProcessors()
+            try {
+                val freqs = (0 until cores).mapNotNull { i ->
+                    File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq").takeIf { it.canRead() }
+                        ?.readText()?.trim()?.toLongOrNull()
+                }
+                if (freqs.size == cores && freqs.isNotEmpty()) {
+                    val mx = freqs.max()
+                    val big = freqs.count { it >= mx * 0.70 }
+                    return big.coerceIn(2, 6)
+                }
+            } catch (_: Exception) { }
+            return (cores / 2).coerceIn(3, 6)
+        }
+
         private val NON_SPEECH = Regex("^\\s*(\\[[^\\]]*\\]|\\([^)]*\\)|\\*[^*]*\\*|♪[^♪]*♪?)\\s*$")
 
         /** Faqat bepul AAR qo'llaydigan (kvantlanmagan) modellar. */
         val MODEL_OPTIONS = listOf(
-            ModelInfo("tiny", "ggml-tiny.bin", 75, "Eng tez ishlaydi, lekin aniqligi pastroq"),
+            ModelInfo("tiny", "ggml-tiny.bin", 75, "Eng tez: Tavsiya etilgandan ~2 baravar tez, lekin aniqligi pastroq"),
             ModelInfo("base", "ggml-base.bin", 142, "Tavsiya etiladi: tez va yetarlicha aniq"),
-            ModelInfo("small", "ggml-small.bin", 466, "Eng aniq natija, lekin sekinroq ishlaydi")
+            ModelInfo("small", "ggml-small.bin", 466, "Eng aniq natija, lekin ~2–3 baravar sekinroq ishlaydi")
         )
 
         data class ModelInfo(

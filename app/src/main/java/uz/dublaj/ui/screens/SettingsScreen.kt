@@ -637,6 +637,23 @@ fun SettingsScreen(
                     }
                 }
                 Text(WhisperRecognizer.info(config.whisperModel).note, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                SwitchRow(
+                    "Sukunatni o'tkazib yuborish",
+                    "Nutq yo'q joylarni qirqib, matn ajratishni tezlashtiradi. Tavsiya etiladi.",
+                    config.sttSkipSilence
+                ) { vm.setConfig(config.copy(sttSkipSilence = it)) }
+                Text(
+                    "Sekin ishlasa: \"Tez\" modelni tanlang va manba tilini aniq belgilang (\"Avto\" tilni aniqlash uchun qo'shimcha vaqt oladi).",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                if (expert) {
+                    HelpSlider(
+                        title = "Protsessor oqimlari",
+                        valueText = if (config.sttThreads == 0) "Avto (${WhisperRecognizer.autoThreads()})" else "${config.sttThreads}",
+                        help = "0 — avtomatik. Odatda kuchli yadrolar soniga teng (4–6) eng tez. Ko'p qo'yish ba'zan sekinlashtiradi va telefonni qizdiradi.",
+                        value = config.sttThreads.toFloat(), range = 0f..8f
+                    ) { vm.setConfig(config.copy(sttThreads = it.toInt())) }
+                }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Button(onClick = { vm.downloadWhisper(context) }, enabled = !busy) { Text("Yuklash") }
                     OutlinedButton(onClick = { whisperPicker.launch(arrayOf("*/*")) }, enabled = !busy) { Text("Fayldan qo'shish") }

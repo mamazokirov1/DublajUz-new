@@ -225,6 +225,24 @@ class DubbingPipeline {
             progress(0.42f, "Oldingi amal tugashi kutilmoqda…")
             delay(500)
         }
+        // Nutqsiz oraliqlarni qirqish — Whisper ishlash vaqtini qisqartiradi
+        var sttInput: File = dir.extractedWav
+        var trimMap: SilenceTrimmer.Mapping? = null
+        val trimmedWav = File(dir.temp, "trimmed.wav")
+        if (config.sttSkipSilence) {
+            progress(0.42f, "Sukunat joylari qidirilmoqda…")
+            try {
+                val tr = SilenceTrimmer.trim(dir.extractedWav, trimmedWav)
+                if (tr != null) {
+                    sttInput = tr.file
+                    trimMap = tr.mapping
+                    progress(0.44f, "Sukunat qirqildi: ~${tr.savedPercent}% tezroq")
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "SilenceTrimmer ishlamadi")
+                trimmedWav.delete()
+            }
+        }
         val recognizer = WhisperRecognizer(context.applicationContext)
         var detached = false
         val result = try {
@@ -233,7 +251,7 @@ class DubbingPipeline {
             sttBusy = true
             val job = sttScope.async {
                 try {
-                    recognizer.transcribe(dir.extractedWav, config.sourceLang) { p, m ->
+                    recognizer.transcribe(sttInput, config.sourceLang, config.sttThreads) { p, m ->
                         progress(0.5f + 0.45f * p, m)
                     }
                 } finally {
@@ -254,8 +272,15 @@ class DubbingPipeline {
             if (!detached) recognizer.release()          // tarjima uchun xotirani bo'shatamiz
         }
         checkCancelled()
+        val mapped: List<TranscriptUnit> = trimMap?.let { m ->
+            result.units.map { u ->
+                val s = m.toOrigStart(u.start)
+                u.copy(start = s, end = maxOf(m.toOrigEnd(u.end), s + 0.1))
+            }
+        } ?: result.units
+        trimmedWav.delete()
         val fixes = SttFixes.load(context, File(dir.root, "stt_fixes.json"))
-        val fixedUnits: List<TranscriptUnit> = SttFixes.apply(result.units, fixes)
+        val fixedUnits: List<TranscriptUnit> = SttFixes.apply(mapped, fixes)
         val units: List<TranscriptUnit> = if (!config.snapSpeech) fixedUnits else try {
             SpeechSnap.refine(dir.extractedWav, fixedUnits)
         } catch (e: Exception) {

@@ -43,6 +43,8 @@ object ConfigStore {
             aiChunkSize = sp.getInt("aiChunkSize", d.aiChunkSize),
             aiExtraPrompt = sp.getString("aiExtraPrompt", d.aiExtraPrompt) ?: d.aiExtraPrompt,
             accent = sp.getInt("accent", d.accent),
+            sttSkipSilence = sp.getBoolean("sttSkipSilence", d.sttSkipSilence),
+            sttThreads = sp.getInt("sttThreads", d.sttThreads),
             autoSaveAudio = sp.getBoolean("autoSaveAudio", d.autoSaveAudio),
             geminiKey = sp.getString("geminiKey", d.geminiKey) ?: d.geminiKey,
             geminiModel = sp.getString("geminiModel", d.geminiModel) ?: d.geminiModel,
@@ -75,6 +77,8 @@ object ConfigStore {
             .putInt("aiChunkSize", c.aiChunkSize)
             .putString("aiExtraPrompt", c.aiExtraPrompt)
             .putInt("accent", c.accent)
+            .putBoolean("sttSkipSilence", c.sttSkipSilence)
+            .putInt("sttThreads", c.sttThreads)
             .putBoolean("autoSaveAudio", c.autoSaveAudio)
             .putFloat("originalVolume", c.originalVolume)
             .putFloat("uzbekVolume", c.uzbekVolume)
