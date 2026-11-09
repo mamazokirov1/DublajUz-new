@@ -23,6 +23,10 @@ class WorkDir(context: Context) {
     val extractedWav get() = File(temp, "extracted.wav")      // 16 kHz — Whisper uchun
     val mixWav get() = File(temp, "original_mix.wav")         // 22.05 kHz — aralashtirish uchun
     val refAutoWav get() = File(temp, "ref_auto.wav")         // videodan ajratilgan namuna ovoz (klonlash uchun)
+    /** Foydalanuvchi gap uchun yozgan ovoz: temp/seg_voice_<id>.wav */
+    fun segmentVoice(id: Int): File = File(temp, "seg_voice_$id.wav")
+    fun hasSegmentVoice(id: Int): Boolean = segmentVoice(id).let { it.isFile && it.length() > 44 }
+    fun clearSegmentVoice(id: Int) { segmentVoice(id).delete() }
     /** Foydalanuvchi tanlagan namuna ovoz (voice_ref.<kengaytma>). */
     val refUserFile: File? get() = root.listFiles()?.firstOrNull { it.name.startsWith("voice_ref.") && it.isFile }
 

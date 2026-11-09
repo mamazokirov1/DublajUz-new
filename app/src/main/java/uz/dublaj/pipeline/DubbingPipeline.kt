@@ -422,8 +422,10 @@ class DubbingPipeline {
             checkCancelled()
             val g = online[u.id]
             if (g != null && g.uz.isNotBlank()) {
-                val uz = norm.normalize(g.uz)
-                val qa = TranslationQa.issue(u.text, uz)
+                // Avval xom tarjimani, keyin normalizatsiyadan keyin tekshiramiz (raqam→so'z)
+                val rawUz = g.uz.trim()
+                val uz = norm.normalize(rawUz)
+                val qa = TranslationQa.issue(u.text, rawUz) ?: TranslationQa.issue(u.text, uz)
                 if (qa != null) {
                     flagged++
                     Timber.w("Tarjima shubhali #${u.id}: $qa")
@@ -434,11 +436,12 @@ class DubbingPipeline {
                     val n = norm.normalize(a)
                     if (n.isNotBlank() && n !in alts) alts.add(n)
                 }
-                result.add(TranslationUnit(u.id, u.start, u.end, u.text, uz, u.language, qa != null, alts))
+                // QA: asl AI matn + normalizatsiyadan keyin (raqam so'zga aylanganini hisobga oladi)
+                result.add(TranslationUnit(u.id, u.start, u.end, u.text, uz, u.language, qa != null, alts, qa))
             } else {
                 failed++
                 if (firstError == null) firstError = "AI javob bermadi"
-                result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true))
+                result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true, emptyList(), "AI javob bermadi"))
             }
         }
 
@@ -462,6 +465,9 @@ class DubbingPipeline {
                 put("id", u.id); put("start", u.start); put("end", u.end)
                 put("text", u.text); put("uzText", u.uzText)
                 put("language", u.language); put("check", u.check)
+                if (u.issue != null) put("issue", u.issue)
+                put("voiceRole", u.voiceRole)
+                put("hasUserVoice", u.hasUserVoice)
             })
         }
         dir.translationJson.writeText(arr.toString(2))
@@ -478,7 +484,10 @@ class DubbingPipeline {
                     u.getInt("id"), u.getDouble("start"), u.getDouble("end"),
                     u.getString("text"), u.getString("uzText"),
                     u.optString("language", "en"), u.optBoolean("check", false),
-                    u.optJSONArray("alts")?.let { arr -> (0 until arr.length()).map { k -> arr.getString(k) } } ?: emptyList()
+                    u.optJSONArray("alts")?.let { arr -> (0 until arr.length()).map { k -> arr.getString(k) } } ?: emptyList(),
+                    if (u.has("issue") && !u.isNull("issue")) u.getString("issue") else null,
+                    u.optString("voiceRole", ""),
+                    u.optBoolean("hasUserVoice", false)
                 )
             }
         } catch (e: Exception) {
@@ -610,7 +619,16 @@ class DubbingPipeline {
                 val fromEff = maxOf(sStart, placer.cursorSec)
                 val slot = ((sNext ?: duration) - fromEff).coerceAtLeast(0.3)
                 val availSec = (slot - config.marginS).coerceAtLeast(0.3)
-                var seg = synthSeg(u.uzText, slot)
+                // Foydalanuvchi o'z ovozini yozgan bo'lsa — shu ishlatiladi; aks holda ONNX/VITS
+                var seg: VitsSynthesizer.SegmentAudio
+                val userWav = dir.segmentVoice(u.id)
+                if (u.hasUserVoice && userWav.isFile && userWav.length() > 44) {
+                    val (pcmU, srU) = uz.dublaj.util.SegmentRecorder.readWavPcm(userWav)
+                    seg = VitsSynthesizer.SegmentAudio(pcmU, srU, 1f)
+                    Timber.i("Gap #${u.id}: foydalanuvchi ovozi")
+                } else {
+                    seg = synthSeg(u.uzText, slot)
+                }
                 // Sig'masa: qisqaroq tarjima nomzodini sinaymiz (faqat foydalanuvchi matnni o'zgartirmagan bo'lsa)
                 if (seg.durationSec > availSec * 1.12 && u.alts.size > 1 && u.alts[0] == u.uzText) {
                     for (alt in u.alts.drop(1).take(3)) {

@@ -18,7 +18,13 @@ data class TranslationUnit(
     /** true = tarjima ishlamadi / tekshirish kerak. Foydalanuvchi tahrir qilgach false bo'ladi. */
     val check: Boolean = false,
     /** Tarjima nomzodlari (alts[0] = tanlangan). Dublaj vaqtida sig'masa qisqaroq variant sinab ko'riladi. */
-    val alts: List<String> = emptyList()
+    val alts: List<String> = emptyList(),
+    /** QA sababi (tahrir ekranida ko'rsatiladi). */
+    val issue: String? = null,
+    /** Oddiy izoh: "" | "erkak" | "ayol" | "bola" — keyinchalik ovoz tanlash uchun. */
+    val voiceRole: String = "",
+    /** Foydalanuvchi shu gap uchun o'z ovozini yozganmi (segment wav mavjud). */
+    val hasUserVoice: Boolean = false
 )
 
 data class AppConfig(

@@ -3,6 +3,7 @@
 
     <!-- Video tanlash SAF (GetContent) orqali: saqlash ruxsatlari kerak emas -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <!-- Android 15+: video qayta ishlash (STT/TTS/mux). Android 10–14 da dataSync ishlatiladi. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />

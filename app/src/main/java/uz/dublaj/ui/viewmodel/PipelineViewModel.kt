@@ -406,10 +406,42 @@ class PipelineViewModel : ViewModel() {
     fun updateUzText(index: Int, newText: String) {
         val list = _translationUnits.value.toMutableList()
         if (index !in list.indices) return
-        list[index] = list[index].copy(uzText = newText, check = false)
+        list[index] = list[index].copy(uzText = newText, check = false, issue = null)
         _translationUnits.value = list
         _approved.value = false
     }
+
+    fun setVoiceRole(index: Int, role: String) {
+        val list = _translationUnits.value.toMutableList()
+        if (index !in list.indices) return
+        list[index] = list[index].copy(voiceRole = role)
+        _translationUnits.value = list
+        _approved.value = false
+    }
+
+    fun setUserVoice(index: Int, has: Boolean) {
+        val list = _translationUnits.value.toMutableList()
+        if (index !in list.indices) return
+        list[index] = list[index].copy(hasUserVoice = has)
+        _translationUnits.value = list
+        _approved.value = false
+        appCtx?.let { ctx ->
+            viewModelScope.launch(Dispatchers.IO) {
+                try { pipeline.saveTranslation(ctx, _translationUnits.value) } catch (_: Exception) {}
+            }
+        }
+    }
+
+    fun clearUserVoice(context: Context, index: Int, unitId: Int) {
+        val app = context.applicationContext
+        viewModelScope.launch(Dispatchers.IO) {
+            try { pipeline.work(app).clearSegmentVoice(unitId) } catch (_: Exception) {}
+        }
+        setUserVoice(index, false)
+    }
+
+    fun segmentVoiceFile(context: Context, unitId: Int): java.io.File =
+        pipeline.work(context.applicationContext).segmentVoice(unitId)
 
     fun saveTranslations(context: Context) {
         val app = context.applicationContext
