@@ -36,9 +36,11 @@ import uz.dublaj.ui.screens.PlayerScreen
 import uz.dublaj.ui.screens.QueueScreen
 import uz.dublaj.ui.screens.TextToolsScreen
 import uz.dublaj.ui.screens.SettingsScreen
+import uz.dublaj.ui.screens.OnboardingScreen
 import uz.dublaj.ui.viewmodel.PipelineViewModel
 
 object Routes {
+    const val ONBOARDING = "onboarding"
     const val HOME = "home"
     const val EDIT = "edit"
     const val SETTINGS = "settings"
@@ -49,12 +51,14 @@ object Routes {
 }
 
 @Composable
-fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {}) {
+fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {}, initialOnboardingDone: Boolean = false) {
     val navController = rememberNavController()
     // NavHost'dan TASHQARIDA yaratiladi -> Activity'ga bog'langan, barcha ekranlar bitta nusxani ulashadi
     val vm: PipelineViewModel = viewModel()
 
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Config (onboardingDone, Pro, ...) birinchi ochilishda yuklansin
+    LaunchedEffect(Unit) { vm.restore(ctx) }
     LaunchedEffect(incomingUri) {
         if (incomingUri != null) {
             vm.restore(ctx) // Pro holati yuklangan bo'lsin (uzun videoni noto'g'ri rad etmaslik uchun)
@@ -82,12 +86,28 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
             onDismiss = { prompt = null }
         )
     }
+    // Restore tugagach to'g'ri ekranga o'tkazish (hot restart / qayta ochish)
+    var restoredOnce by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    LaunchedEffect(config.onboardingDone) {
+        // Birinchi restore dan keyin
+        if (!restoredOnce && config.onboardingDone) {
+            restoredOnce = true
+            val cur = navController.currentDestination?.route
+            if (cur == Routes.ONBOARDING) {
+                navController.navigate(Routes.HOME) {
+                    popUpTo(Routes.ONBOARDING) { inclusive = true }
+                }
+            }
+        }
+    }
     LaunchedEffect(config.accent, config.isPro) {
         uz.dublaj.ui.theme.ThemeSettings.accent = config.accent
         uz.dublaj.ui.theme.ThemeSettings.pro = config.isPro
     }
-    // Banner BARCHA ekranlar tagida (Pro da ko'rinmaydi)
-    val showBanner = !config.isPro && AdsManager.adsReady
+    // Banner BARCHA ekranlar tagida (Pro da ko'rinmaydi). Onboarding paytida banner yo'q.
+    val showBanner = config.onboardingDone && !config.isPro && AdsManager.adsReady
+    // Onboarding tugamaguncha boshlang'ich yo'nalish — yo'riqnoma
+    val startDest = if (initialOnboardingDone || config.onboardingDone) Routes.HOME else Routes.ONBOARDING
     Column(Modifier.fillMaxSize()) {
       Box(
         Modifier
@@ -96,12 +116,22 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {})
       ) {
     NavHost(
         navController = navController,
-        startDestination = Routes.HOME,
+        startDestination = startDest,
         enterTransition = { slideInHorizontally(tween(280)) { it / 6 } + fadeIn(tween(280)) },
         exitTransition = { slideOutHorizontally(tween(280)) { -it / 10 } + fadeOut(tween(200)) },
         popEnterTransition = { slideInHorizontally(tween(280)) { -it / 10 } + fadeIn(tween(280)) },
         popExitTransition = { slideOutHorizontally(tween(280)) { it / 6 } + fadeOut(tween(200)) }
     ) {
+        composable(Routes.ONBOARDING) {
+            OnboardingScreen(
+                vm = vm,
+                onFinished = {
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Routes.HOME) {
             HomeScreen(
                 vm = vm,

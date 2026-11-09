@@ -24,12 +24,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        uz.dublaj.data.ConfigStore.load(this).let {
-            uz.dublaj.ui.theme.ThemeSettings.mode = it.themeMode
-            uz.dublaj.ui.theme.ThemeSettings.dynamic = it.dynamicColor
-            uz.dublaj.ui.theme.ThemeSettings.accent = it.accent
-            uz.dublaj.ui.theme.ThemeSettings.pro = it.isPro
-        }
+        val initialConfig = uz.dublaj.data.ConfigStore.load(this)
+        uz.dublaj.ui.theme.ThemeSettings.mode = initialConfig.themeMode
+        uz.dublaj.ui.theme.ThemeSettings.dynamic = initialConfig.dynamicColor
+        uz.dublaj.ui.theme.ThemeSettings.accent = initialConfig.accent
+        uz.dublaj.ui.theme.ThemeSettings.pro = initialConfig.isPro
         handleIntent(intent)
         uz.dublaj.monetization.ConsentManager.gatherAndInit(this)
         addOnNewIntentListener { handleIntent(it) }
@@ -39,7 +38,11 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    DublajNavHost(incomingUri = incoming, onIncomingConsumed = { incoming = null })
+                    DublajNavHost(
+                        incomingUri = incoming,
+                        onIncomingConsumed = { incoming = null },
+                        initialOnboardingDone = initialConfig.onboardingDone
+                    )
                 }
             }
         }

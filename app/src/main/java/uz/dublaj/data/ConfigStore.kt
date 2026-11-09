@@ -61,7 +61,8 @@ object ConfigStore {
             cbVoiceMode = sp.getString("cbVoiceMode", d.cbVoiceMode) ?: d.cbVoiceMode,
             cbCloneConsent = sp.getBoolean("cbCloneConsent", d.cbCloneConsent),
             cbRefName = sp.getString("cbRefName", d.cbRefName) ?: d.cbRefName,
-            isPro = sp.getBoolean("isPro", d.isPro)
+            isPro = sp.getBoolean("isPro", d.isPro),
+            onboardingDone = sp.getBoolean("onboardingDone", d.onboardingDone)
         )
     }
 
@@ -117,6 +118,7 @@ object ConfigStore {
             .putBoolean("cbCloneConsent", c.cbCloneConsent)
             .putString("cbRefName", c.cbRefName)
             .putBoolean("isPro", c.isPro)
+            .putBoolean("onboardingDone", c.onboardingDone)
             .apply()
     }
 }

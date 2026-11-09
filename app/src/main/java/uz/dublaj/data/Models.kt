@@ -109,7 +109,9 @@ data class AppConfig(
     val aiExtraPrompt: String = "",
     // ---- monetizatsiya
     /** Pro versiya ochilganmi (Play Billing orqali). */
-    val isPro: Boolean = false
+    val isPro: Boolean = false,
+    /** Birinchi ochilishdagi onboarding tugaganmi. */
+    val onboardingDone: Boolean = false
 ) {
     /** Chatterbox tanlangan va server manzili kiritilgan. */
     val chatterboxReady: Boolean get() = uz.dublaj.BuildConfig.CLOUD_TTS && ttsEngine == "chatterbox" && cbUrl.isNotBlank()
