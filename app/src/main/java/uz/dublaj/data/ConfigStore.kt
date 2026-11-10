@@ -26,6 +26,10 @@ object ConfigStore {
             fitScale = sp.getFloat("fitScale", d.fitScale),
             duckAmount = sp.getFloat("duckAmount", d.duckAmount),
             levelClips = sp.getBoolean("levelClips", d.levelClips),
+            audioQuality = sp.getInt("audioQuality", d.audioQuality),
+            rolePitchMale = sp.getFloat("rolePitchMale", d.rolePitchMale),
+            rolePitchFemale = sp.getFloat("rolePitchFemale", d.rolePitchFemale),
+            rolePitchChild = sp.getFloat("rolePitchChild", d.rolePitchChild),
             expertMode = sp.getBoolean("expertMode", d.expertMode),
             themeMode = sp.getInt("themeMode", d.themeMode),
             dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
@@ -97,6 +101,10 @@ object ConfigStore {
             .putFloat("fitScale", c.fitScale)
             .putFloat("duckAmount", c.duckAmount)
             .putBoolean("levelClips", c.levelClips)
+            .putInt("audioQuality", c.audioQuality)
+            .putFloat("rolePitchMale", c.rolePitchMale)
+            .putFloat("rolePitchFemale", c.rolePitchFemale)
+            .putFloat("rolePitchChild", c.rolePitchChild)
             .putBoolean("expertMode", c.expertMode)
             .putInt("themeMode", c.themeMode)
             .putBoolean("dynamicColor", c.dynamicColor)

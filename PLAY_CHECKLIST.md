@@ -56,3 +56,10 @@
 - Bepul: kuniga 3 ta dublyaj, **bitta video 15 daqiqagacha**. Uzun video tanlansa Pro'ga undovchi dialog chiqadi.
 - Limit tugagach foydalanuvchi **5 ta mukofotli reklama** ko'rib 1 ta qo'shimcha imkoniyat oladi (`UsageStore.ADS_PER_BONUS`). Matn → ovoz ham shu imkoniyatdan sarflaydi.
 - AdMob'da yangi **Rewarded** reklama birligi yarating va GitHub Secret qo'shing: `ADMOB_REWARDED_ID`. Berilmasa Google TEST reklamasi chiqadi.
+
+## Qo'shimcha (v13): nimalar o'zgardi va nimalar qoldi
+- Tuzatildi: tarjimaning qisqa variantlari (`alts`) diskka saqlanmasdi — ilova qayta ochilgach sig'dirish ishlamasdi.
+- Tuzatildi: aralashmada ovoz qattiq qirqilardi (buzilish) — endi silliq limiter.
+- Yangi sozlamalar: Audio sifati (Standart / Yuqori 44.1 kHz, 160 kbps), ayol/erkak/bola tembri siljishi.
+- Yangi: Sozlamalar → Ilova haqida → "Maxfiylik siyosati" (`BuildConfig.PRIVACY_URL`). GitHub Pages yoqilganini tekshiring.
+- Qoldi (qo'lda): VITS modeli litsenziyasi (MMS asosida bo'lsa CC-BY-NC — reklama/Pro bilan mos emas), AdMob/Billing ID lari, Data safety, yopiq test (shaxsiy akkaunt: 12 tester × 14 kun).

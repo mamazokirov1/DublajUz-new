@@ -735,6 +735,24 @@ fun SettingsScreen(
                         "Gap video vaqtiga sig'masa, ovoz shu darajagacha tezlashtiriladi (sifat saqlanadi). 1.0 o'chiq degani.",
                         config.fitScale, 0.7f..1.0f
                     ) { vm.setConfig(config.copy(fitScale = it)) }
+
+                    HelpSlider(
+                        "Ayol ovozi siljishi", "%+.1f".format(config.rolePitchFemale),
+                        "Tahrirda gapga \"ayol\" izohi qo'yilganda ovoz tembri shuncha yarim tonga ko'tariladi.",
+                        config.rolePitchFemale, 0f..6f, steps = 11
+                    ) { vm.setConfig(config.copy(rolePitchFemale = it)) }
+
+                    HelpSlider(
+                        "Erkak ovozi siljishi", "%+.1f".format(config.rolePitchMale),
+                        "\"Erkak\" izohli gaplar uchun tembr siljishi (manfiy = qalinroq).",
+                        config.rolePitchMale, -5f..2f, steps = 13
+                    ) { vm.setConfig(config.copy(rolePitchMale = it)) }
+
+                    HelpSlider(
+                        "Bola ovozi siljishi", "%+.1f".format(config.rolePitchChild),
+                        "\"Bola\" izohli gaplar uchun tembr siljishi.",
+                        config.rolePitchChild, 2f..8f, steps = 11
+                    ) { vm.setConfig(config.copy(rolePitchChild = it)) }
                 }
 
                 OutlinedTextField(
@@ -816,6 +834,24 @@ fun SettingsScreen(
                     "Dublyaj ovozi balandligi.",
                     config.uzbekVolume, 0.5f..1.5f
                 ) { vm.setConfig(config.copy(uzbekVolume = it)) }
+
+                Text("Audio sifati", style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(
+                        selected = config.audioQuality == 0,
+                        onClick = { vm.setConfig(config.copy(audioQuality = 0)) },
+                        label = { Text("Standart") }
+                    )
+                    FilterChip(
+                        selected = config.audioQuality >= 1,
+                        onClick = { vm.setConfig(config.copy(audioQuality = 1)) },
+                        label = { Text("Yuqori (kino)") }
+                    )
+                }
+                Text(
+                    "Yuqori: musiqa va effektlar tiniqroq (44.1 kHz), lekin ishlash sekinroq va fayl biroz kattaroq.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
 
                 if (expert) {
                     HelpSlider(
@@ -1046,6 +1082,13 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                     )
                 }
+                val uriHandler = LocalUriHandler.current
+                OutlinedButton(
+                    onClick = {
+                        try { uriHandler.openUri(uz.dublaj.BuildConfig.PRIVACY_URL) } catch (_: Exception) { vm.toast("Havolani ochib bo'lmadi") }
+                    },
+                    shape = MaterialTheme.shapes.medium
+                ) { Text("Maxfiylik siyosati") }
                 val actCtx = context as? Activity
                 if (actCtx != null && uz.dublaj.monetization.ConsentManager.privacyOptionsRequired(context)) {
                     OutlinedButton(

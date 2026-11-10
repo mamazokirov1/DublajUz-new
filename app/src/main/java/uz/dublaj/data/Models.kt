@@ -55,6 +55,12 @@ data class AppConfig(
     val duckAmount: Float = 0.2f,
     /** Har bir klip balandligini tenglash. */
     val levelClips: Boolean = true,
+    /** Chiqish audio sifati: 0 = standart (22.05 kHz, 96 kbps), 1 = yuqori (44.1 kHz, 160 kbps). */
+    val audioQuality: Int = 0,
+    /** Gap izohiga qarab ovoz balandligi siljishi (yarim ton). */
+    val rolePitchMale: Float = -2f,
+    val rolePitchFemale: Float = 3f,
+    val rolePitchChild: Float = 5f,
     // ---- ko'rinish
     /** false = Oddiy (kam sozlama), true = Mutaxassis (hamma sozlama). */
     val expertMode: Boolean = false,
@@ -121,6 +127,9 @@ data class AppConfig(
 ) {
     /** Chatterbox tanlangan va server manzili kiritilgan. */
     val chatterboxReady: Boolean get() = uz.dublaj.BuildConfig.CLOUD_TTS && ttsEngine == "chatterbox" && cbUrl.isNotBlank()
+
+    val outSampleRate: Int get() = if (audioQuality >= 1) 44100 else 22050
+    val outAudioBitrate: Int get() = if (audioQuality >= 1) 160_000 else 96_000
 
     /** Onlayn tarjima yoqilgan va kalit kiritilgan. */
     val onlineReady: Boolean

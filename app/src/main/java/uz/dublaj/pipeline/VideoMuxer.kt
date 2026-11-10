@@ -29,6 +29,7 @@ object VideoMuxer {
         sampleRate: Int,
         totalSamples: Long,
         mixer: DubMixer,
+        audioBitrate: Int = 96_000,
         onProgress: (Float) -> Unit = {}
     ): File {
         // MP4 ga yozib bo'lmaydigan kodek (VP9/VP8 ...) bo'lsa — avval H.264 ga qayta kodlaymiz
@@ -39,7 +40,7 @@ object VideoMuxer {
             val tmp = File(outFile.parentFile, outFile.nameWithoutExtension + ".h264.tmp.mp4")
             try {
                 VideoTranscoder.toH264(videoFile, tmp) { onProgress(it * 0.5f) }
-                return mux(tmp, outFile, sampleRate, totalSamples, mixer) { onProgress(0.5f + it * 0.5f) }
+                return mux(tmp, outFile, sampleRate, totalSamples, mixer, audioBitrate) { onProgress(0.5f + it * 0.5f) }
             } finally {
                 tmp.delete()
             }
@@ -85,7 +86,7 @@ object VideoMuxer {
             // ---- AAC kodlovchi
             val aacFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, 1).apply {
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-                setInteger(MediaFormat.KEY_BIT_RATE, 96_000)
+                setInteger(MediaFormat.KEY_BIT_RATE, audioBitrate)
                 setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
             }
             val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)

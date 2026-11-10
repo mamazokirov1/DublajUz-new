@@ -33,6 +33,10 @@ android {
         val githubRepo = (project.findProperty("githubRepo") as String?)?.takeIf { it.isNotBlank() }
             ?: "mamazokirov1/DublajUz-new"
         buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
+        // Maxfiylik siyosati (GitHub Pages, /docs): Play Console dagi URL bilan bir xil bo'lsin
+        val repoParts = githubRepo.split("/")
+        val privacyUrl = "https://${repoParts.first()}.github.io/${repoParts.last()}/"
+        buildConfigField("String", "PRIVACY_URL", "\"$privacyUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

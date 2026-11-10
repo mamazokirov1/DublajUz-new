@@ -122,8 +122,16 @@ class DubMixer(
         }
 
         return ShortArray(count) { i ->
-            (out[i].coerceIn(-0.95f, 0.95f) * 32767f).toInt().toShort()
+            (softLimit(out[i]) * 32767f).toInt().toShort()
         }
+    }
+
+    /** 0.8 gacha o'zgarishsiz; undan yuqorisi silliq siqiladi (qattiq qirqish buzilishi o'rniga). */
+    private fun softLimit(x: Float): Float {
+        val a = kotlin.math.abs(x)
+        if (a <= 0.8f) return x
+        val y = 0.8f + 0.18f * kotlin.math.tanh((a - 0.8f) / 0.18f)
+        return if (x < 0) -y else y
     }
 
     override fun close() {

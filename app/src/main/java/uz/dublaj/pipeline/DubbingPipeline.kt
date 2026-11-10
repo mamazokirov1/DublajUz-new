@@ -44,7 +44,6 @@ import java.io.File
 class DubbingPipeline {
 
     companion object {
-        private const val OUT_SR = 22050
         /** Whisper o'z oqimida ishlaydi; bekor qilinganda natija tashlab yuboriladi, tugagach xotira bo'shatiladi. */
         private val sttScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         @Volatile private var sttBusy = false
@@ -468,6 +467,7 @@ class DubbingPipeline {
                 if (u.issue != null) put("issue", u.issue)
                 put("voiceRole", u.voiceRole)
                 put("hasUserVoice", u.hasUserVoice)
+                if (u.alts.isNotEmpty()) put("alts", JSONArray(u.alts))
             })
         }
         dir.translationJson.writeText(arr.toString(2))
@@ -573,6 +573,7 @@ class DubbingPipeline {
     ): File {
         val progress = wrap(onProgress)
         val dir = ensure(context)
+        val outSr = config.outSampleRate
         if (!dir.approvedFlag.isFile) throw IllegalStateException("Tarjima tasdiqlanmagan")
         val useCb = config.chatterboxReady
         val vitsOk = VitsSynthesizer.isReady(dir)
@@ -608,12 +609,12 @@ class DubbingPipeline {
         val active = units.filter { it.uzText.isNotBlank() && it.start < duration }.sortedBy { it.start }
         if (active.isEmpty()) throw IllegalStateException("Dublyaj uchun matn yo'q")
 
-        FileUtils.ensureSpace(dir.temp, (duration * OUT_SR * 2 * 2).toLong() + 100L * 1024 * 1024)
+        FileUtils.ensureSpace(dir.temp, (duration * outSr * 2 * 2).toLong() + 100L * 1024 * 1024)
         FileUtils.ensureSpace(dir.output, video.length() + 50L * 1024 * 1024)
 
         val norm = TextNormalizer.fromAssets(context.applicationContext)
         val placer = SegmentPlacer(
-            totalSec = duration, sr = OUT_SR,
+            totalSec = duration, sr = outSr,
             maxSpeed = config.maxAtempo,
             marginSec = config.marginS.toDouble(),
             gapSec = config.gapS.toDouble(),
@@ -686,9 +687,9 @@ class DubbingPipeline {
                     // Erkak/ayol/bola izohi → pitch (taxminiy, alohida model emas)
                     val basePitch = config.voicePitch
                     val rolePitch = when (u.voiceRole) {
-                        "ayol" -> basePitch + 3f
-                        "bola" -> basePitch + 5f
-                        "erkak" -> basePitch - 2f
+                        "ayol" -> basePitch + config.rolePitchFemale
+                        "bola" -> basePitch + config.rolePitchChild
+                        "erkak" -> basePitch + config.rolePitchMale
                         else -> basePitch
                     }
                     if (vitsOk) {
@@ -708,17 +709,17 @@ class DubbingPipeline {
                         }
                     }
                 }
-                val resampled = StreamResampler.resample(seg.pcm, seg.sampleRate, OUT_SR)
+                val resampled = StreamResampler.resample(seg.pcm, seg.sampleRate, outSr)
                 val pcm = if (config.levelClips) uz.dublaj.util.AudioLevel.level(resampled) else resampled
                 placer.place(u.id, sStart, sNext, pcm)?.let { c ->
                     clips.add(c)
-                    val placeAt = c.placeAtSample.toDouble() / OUT_SR
+                    val placeAt = c.placeAtSample.toDouble() / outSr
                     val lag = placeAt - sStart
                     lags.add(lag)
                     SyncReport.add(
                         context,
                         "#${u.id} s=${SyncReport.f(sStart)} slot=${SyncReport.f(slot)} tts=${SyncReport.f(seg.durationSec)} " +
-                            "x${SyncReport.f(c.speed.toDouble())} dub=${SyncReport.f(placeAt)}-${SyncReport.f(placeAt + c.samples.toDouble() / OUT_SR)} " +
+                            "x${SyncReport.f(c.speed.toDouble())} dub=${SyncReport.f(placeAt)}-${SyncReport.f(placeAt + c.samples.toDouble() / outSr)} " +
                             "kechikish=${SyncReport.sf(lag)}"
                     )
                 }
@@ -729,20 +730,21 @@ class DubbingPipeline {
         if (clips.isEmpty()) throw IllegalStateException("Ovoz hosil bo'lmadi (matn bo'sh yoki o'qib bo'lmadi)")
 
         progress(0.62f, "Asl audio tayyorlanmoqda…")
-        if (!dir.mixWav.isFile) {
-            AudioExtractor.extractToWav(video, dir.mixWav, OUT_SR) { p ->
+        dir.mixWav.delete()   // boshqa chastotadagi eski nusxa qolmasin
+        run {
+            AudioExtractor.extractToWav(video, dir.mixWav, outSr) { p ->
                 progress(0.62f + 0.1f * p, "Asl audio tayyorlanmoqda…")
             }
         }
 
         val outFile = File(dir.output, "dublaj_${System.currentTimeMillis()}.mp4")
-        val totalSamples = (duration * OUT_SR).toLong()
+        val totalSamples = (duration * outSr).toLong()
         try {
             val origRanges = active.map { a ->
-                Pair((maxOf(0.0, a.start - 0.05) * OUT_SR).toLong(), (a.end * OUT_SR).toLong())
+                Pair((maxOf(0.0, a.start - 0.05) * outSr).toLong(), (a.end * outSr).toLong())
             }
-            DubMixer(OUT_SR, WavFile(dir.mixWav), clips, config.originalVolume, config.uzbekVolume, config.duckAmount, origRanges).use { mixer ->
-                VideoMuxer.mux(video, outFile, OUT_SR, totalSamples, mixer) { p ->
+            DubMixer(outSr, WavFile(dir.mixWav), clips, config.originalVolume, config.uzbekVolume, config.duckAmount, origRanges).use { mixer ->
+                VideoMuxer.mux(video, outFile, outSr, totalSamples, mixer, config.outAudioBitrate) { p ->
                     progress(0.72f + 0.27f * p, "Video yig'ilmoqda…")
                 }
             }
