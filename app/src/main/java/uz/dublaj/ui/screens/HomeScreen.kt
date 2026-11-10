@@ -118,12 +118,49 @@ fun HomeScreen(
         onDispose { controller?.isAppearanceLightStatusBars = !darkBg }
     }
 
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    var showNotifInfo by remember { mutableStateOf(false) }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) showNotifInfo = true
+    }
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
-            != PackageManager.PERMISSION_GRANTED
-        ) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        val needPermission = Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        if (!notifAsked) {
+            if (needPermission) {
+                notifAsked = true
+                notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                notifAsked = true
+                showNotifInfo = true
+            }
+        }
+    }
+    if (showNotifInfo) {
+        AlertDialog(
+            onDismissRequest = { showNotifInfo = false },
+            title = { Text("Bildirishnomalar o'chiq") },
+            text = {
+                Text(
+                    "Dublyaj bir necha daqiqa davom etadi. Bildirishnomalar yoqilsa, ilova fonda " +
+                        "ishlayotganda jarayonni ko'rasiz va tayyor bo'lganda xabar olasiz."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNotifInfo = false
+                    try {
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (_: Exception) {
+                    }
+                }) { Text("Yoqish") }
+            },
+            dismissButton = { TextButton(onClick = { showNotifInfo = false }) { Text("Keyinroq") } }
+        )
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -165,7 +202,7 @@ fun HomeScreen(
 
             // ---- tezkor amallar: Matn → ovoz KO'RINARLI joyda
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp),
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp).padding(top = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 QuickActionTile(
@@ -173,33 +210,33 @@ fun HomeScreen(
                     subtitle = "Yozing yoki TXT fayl yuklang — o'zbekcha ovoz",
                     icon = Icons.Default.RecordVoiceOver,
                     highlighted = true,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     onClick = { vm.requestTextTab(1); onTextTools() }
                 )
                 QuickActionTile(
                     title = "Videodan matn",
                     subtitle = "Videodagi gaplarni matn qilib olish",
                     icon = Icons.Default.TextSnippet,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     onClick = { vm.requestTextTab(0); onTextTools() }
                 )
             }
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 12.dp),
+                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp).padding(top = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 QuickActionTile(
                     title = "Navbat",
                     subtitle = if (config.isPro) "Ko'p videoni ketma-ket dublyaj" else "Ko'p video (bepulda ${UsageStore.FREE_QUEUE_ITEMS} ta)",
                     icon = Icons.Default.Queue,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     onClick = onQueue
                 )
                 QuickActionTile(
                     title = "Tarix",
                     subtitle = "Tayyor videolar",
                     icon = Icons.Default.History,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
                     onClick = onHistory
                 )
             }
@@ -263,9 +300,9 @@ fun HomeScreen(
                     Text(
                         "Bugun: $dubsToday ishlatildi",
                         style = MaterialTheme.typography.labelMedium,
-                        color = cs.onSurfaceVariant
+                        color = cs.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(Modifier.weight(1f))
                     TextButton(onClick = { showProDialog = true }) {
                         Text("Pro", style = MaterialTheme.typography.labelLarge)
                     }
@@ -290,9 +327,10 @@ fun HomeScreen(
                     )
                 } else {
                     // Holat yorliqlari (offline / tarjima)
-                    Row(
+                    FlowRow(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
                         AssistChip(
                             onClick = {},
@@ -609,6 +647,9 @@ private fun RecentCard(entry: HistoryEntry) {
     }
 }
 
+/** Bildirishnoma so'rovi bir jarayon ichida faqat bir marta ko'rsatiladi. */
+private var notifAsked = false
+
 @Composable
 private fun BigButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, onClick: () -> Unit) {
     Button(
@@ -619,9 +660,13 @@ private fun BigButton(text: String, icon: androidx.compose.ui.graphics.vector.Im
     ) {
         Icon(icon, null)
         Spacer(Modifier.width(10.dp))
-        Text(text, style = MaterialTheme.typography.titleMedium)
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.weight(1f, fill = false)
+        )
     }
-
 }
 
 @Composable
@@ -722,6 +767,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(
                     onClick = { context.startActivity(OutputUtils.shareIntent(context, file)) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
@@ -736,6 +782,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                         } catch (e: Exception) { "Saqlash xatosi: ${e.message}" }
                         Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.SaveAlt, null, modifier = Modifier.size(18.dp))
@@ -756,6 +803,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                             }
                         }
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.AudioFile, null, modifier = Modifier.size(18.dp))
@@ -768,6 +816,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                         if (srt.isFile) context.startActivity(ExportUtils.shareIntent(context, srt, "application/x-subrip", "Subtitr ulashish"))
                         else Toast.makeText(context, "Subtitr topilmadi", Toast.LENGTH_SHORT).show()
                     },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Subtitles, null, modifier = Modifier.size(18.dp))

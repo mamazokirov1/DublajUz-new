@@ -12,10 +12,12 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import timber.log.Timber
 import uz.dublaj.MainActivity
+import uz.dublaj.R
 
 /**
  * Uzoq jarayon (STT/tarjima/TTS/mux) paytida ilovani fonda tirik tutadi.
@@ -30,7 +32,8 @@ class PipelineService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         createChannel()
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Dublyaj ishlamoqda…"
-        val notification = buildNotification(text)
+        val progress = intent?.getIntExtra(EXTRA_PROGRESS, -1) ?: -1
+        val notification = buildNotification(text, progress)
         try {
             val dataSync = intent?.getBooleanExtra(EXTRA_DATA_SYNC, false) == true
             val type = when {
@@ -81,18 +84,23 @@ class PipelineService : Service() {
         }
     }
 
-    private fun buildNotification(text: String): Notification {
+    private fun buildNotification(text: String, progress: Int = -1): Notification {
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
+            this, 0, openAppIntent(this),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val b = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("DublajUz")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setSmallIcon(R.drawable.ic_stat_dublaj)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(open)
-            .build()
+        if (progress in 0..100) b.setProgress(100, progress, false) else b.setProgress(0, 0, true)
+        return b.build()
     }
 
     companion object {
@@ -100,6 +108,43 @@ class PipelineService : Service() {
         private const val NOTIF_ID = 1001
         private const val EXTRA_TEXT = "text"
         private const val EXTRA_DATA_SYNC = "data_sync"
+        private const val EXTRA_PROGRESS = "progress"
+
+        /**
+         * Bildirishnomadan ilovani ochish: mavjud oynani oldinga olib chiqadi
+         * (yangi nusxa yaratilsa, jarayon holati — ViewModel — yo'qolar edi).
+         */
+        private fun openAppIntent(context: Context): Intent =
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+
+        /** Ishlayotgan bildirishnomadagi matn va foizni yangilaydi (servis ishlab turgan bo'lsa). */
+        fun update(context: Context, text: String, progressPercent: Int) {
+            try {
+                if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+                val nm = context.getSystemService(NotificationManager::class.java) ?: return
+                val open = PendingIntent.getActivity(
+                    context, 0, openAppIntent(context),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                val b = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setContentTitle("DublajUz")
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setSmallIcon(R.drawable.ic_stat_dublaj)
+                    .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setContentIntent(open)
+                if (progressPercent in 0..100) b.setProgress(100, progressPercent, false) else b.setProgress(0, 0, true)
+                nm.notify(NOTIF_ID, b.build())
+            } catch (e: Exception) {
+                Timber.w(e, "notification update")
+            }
+        }
 
         fun start(context: Context, text: String, dataSync: Boolean = false) {
             try {
@@ -117,20 +162,25 @@ class PipelineService : Service() {
         /** Ish tugaganda (ilova fonda bo'lsa ham) ko'rinadigan oddiy bildirishnoma. */
         fun notifyDone(context: Context, title: String, text: String) {
             try {
+                // Ruxsat berilmagan bo'lsa (Android 13+) yoki bildirishnomalar o'chirilgan bo'lsa — jim o'tamiz
+                if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
                 val nm = context.getSystemService(NotificationManager::class.java) ?: return
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel("dublaj_done") == null) {
                     nm.createNotificationChannel(
-                        NotificationChannel("dublaj_done", "Tayyor bo'lgan ishlar", NotificationManager.IMPORTANCE_DEFAULT)
+                        NotificationChannel("dublaj_done", "Tayyor bo'lgan ishlar", NotificationManager.IMPORTANCE_HIGH)
                     )
                 }
                 val open = PendingIntent.getActivity(
-                    context, 1, Intent(context, MainActivity::class.java),
+                    context, 1, openAppIntent(context),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
                 val n = NotificationCompat.Builder(context, "dublaj_done")
                     .setContentTitle(title)
                     .setContentText(text)
-                    .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setSmallIcon(R.drawable.ic_stat_dublaj)
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
                     .setAutoCancel(true)
                     .setContentIntent(open)
                     .build()

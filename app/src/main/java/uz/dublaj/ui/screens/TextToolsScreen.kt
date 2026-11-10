@@ -141,11 +141,14 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                     Text("Video tanlash")
                                 }
                             } else {
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Button(
                                         onClick = { vm.transcribeAndTranslate(context) },
                                         enabled = !busy && models.whisper && config.onlineReady,
-                                        modifier = Modifier.weight(1f).heightIn(min = 52.dp)
+                                        modifier = Modifier.heightIn(min = 52.dp)
                                     ) {
                                         Icon(Icons.Default.TextSnippet, null)
                                         Spacer(Modifier.width(8.dp))

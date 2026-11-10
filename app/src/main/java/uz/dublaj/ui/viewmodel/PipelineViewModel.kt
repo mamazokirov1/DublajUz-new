@@ -829,6 +829,7 @@ class PipelineViewModel : ViewModel() {
         _state.value = PipelineState.Running(label, 0f, "Boshlanmoqda…")
         job = viewModelScope.launch {
             PipelineService.start(app, "$label ishlamoqda…")
+            val notifJob = launch { trackStateNotification(app) }
             try {
                 block()
             } catch (e: CancellationException) {
@@ -843,9 +844,45 @@ class PipelineViewModel : ViewModel() {
                 Timber.e(e, "Pipeline xatosi")
                 _state.value = PipelineState.Error(e.message ?: e.toString())
             } finally {
+                notifJob.cancel()
                 PipelineService.stop(app)
                 _cancelling.value = false
                 _busy.value = false
+            }
+        }
+    }
+
+    /** Bildirishnomada joriy bosqich va foizni ko'rsatib turadi (sekundiga ko'pi bilan bir marta). */
+    private suspend fun trackStateNotification(app: Context) {
+        var lastPct = -2
+        var lastAt = 0L
+        _state.collect { st ->
+            if (st is PipelineState.Running) {
+                val pct = (st.progress * 100).toInt().coerceIn(0, 100)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (pct != lastPct && now - lastAt >= 1000L) {
+                    lastPct = pct
+                    lastAt = now
+                    val text = if (st.message.isBlank()) st.stage else "${st.stage} — ${st.message}"
+                    PipelineService.update(app, text, if (st.progress > 0f) pct else -1)
+                }
+            }
+        }
+    }
+
+    /** Navbat uchun: ishlayotgan videoning foizi bildirishnomada. */
+    private suspend fun trackQueueNotification(app: Context) {
+        var lastPct = -2
+        var lastAt = 0L
+        _queue.collect { list ->
+            val running = list.firstOrNull { it.status == QueueStatus.RUNNING } ?: return@collect
+            val pct = (running.progress * 100).toInt().coerceIn(0, 100)
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (pct != lastPct && now - lastAt >= 1000L) {
+                lastPct = pct
+                lastAt = now
+                val pos = list.indexOf(running) + 1
+                PipelineService.update(app, "Navbat $pos/${list.size}: ${running.name} — ${running.message}", pct)
             }
         }
     }
@@ -983,6 +1020,7 @@ class PipelineViewModel : ViewModel() {
 
         job = viewModelScope.launch {
             PipelineService.start(app, "Navbat ishlamoqda…")
+            val notifJob = launch { trackQueueNotification(app) }
             try {
                 while (true) {
                     val item = _queue.value.firstOrNull { it.status == QueueStatus.WAITING } ?: break
@@ -1032,6 +1070,7 @@ class PipelineViewModel : ViewModel() {
                     withContext(Dispatchers.IO) { pipeline.clearWork(app) }
                 }
             } finally {
+                notifJob.cancel()
                 PipelineService.stop(app)
                 _cancelling.value = false
                 _busy.value = false

@@ -10,7 +10,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -50,6 +53,7 @@ object Routes {
     const val TEXT = "text"
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {}, initialOnboardingDone: Boolean = false) {
     val navController = rememberNavController()
@@ -105,7 +109,9 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
         uz.dublaj.ui.theme.ThemeSettings.pro = config.isPro
     }
     // Banner BARCHA ekranlar tagida (Pro da ko'rinmaydi). Onboarding paytida banner yo'q.
-    val showBanner = config.onboardingDone && !config.isPro && AdsManager.adsReady
+    // Klaviatura ochiq paytida banner yashiriladi: u klaviatura ustida joy egallab, matn maydonini siqib qo'yardi
+    val imeVisible = WindowInsets.isImeVisible
+    val showBanner = config.onboardingDone && !config.isPro && AdsManager.adsReady && !imeVisible
     // Onboarding tugamaguncha boshlang'ich yo'nalish — yo'riqnoma
     val startDest = if (initialOnboardingDone || config.onboardingDone) Routes.HOME else Routes.ONBOARDING
     Column(Modifier.fillMaxSize()) {
@@ -113,6 +119,8 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
         Modifier
             .weight(1f)
             .then(if (showBanner) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)
+            // targetSdk 36 da klaviatura oynani o'zi siqmaydi: barcha ekranlar klaviatura ustida qoladi
+            .imePadding()
       ) {
     NavHost(
         navController = navController,

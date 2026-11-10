@@ -11,6 +11,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import uz.dublaj.ui.theme.findActivity
+import androidx.compose.ui.unit.dp
 import uz.dublaj.ui.components.SubCue
 import uz.dublaj.ui.components.VideoPlayer
 import uz.dublaj.ui.viewmodel.PipelineViewModel
@@ -22,6 +27,20 @@ fun PlayerScreen(vm: PipelineViewModel, onBack: () -> Unit) {
     val uri by vm.playerUri.collectAsState()
     val units by vm.translationUnits.collectAsState()
     var showSub by remember { mutableStateOf(true) }
+
+    // Qora fonda status/navigatsiya belgilari oq bo'lsin (yorug' mavzuda ular ko'rinmay qolardi)
+    val hostView = LocalView.current
+    val darkBg = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    DisposableEffect(darkBg) {
+        val window = hostView.context.findActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, hostView) }
+        controller?.isAppearanceLightStatusBars = false
+        controller?.isAppearanceLightNavigationBars = false
+        onDispose {
+            controller?.isAppearanceLightStatusBars = !darkBg
+            controller?.isAppearanceLightNavigationBars = !darkBg
+        }
+    }
 
     val cues = remember(units, showSub) {
         if (!showSub) emptyList()
@@ -57,16 +76,19 @@ fun PlayerScreen(vm: PipelineViewModel, onBack: () -> Unit) {
             )
         }
     ) { padding ->
-        Box(
+        BoxWithConstraints(
             Modifier.padding(padding).fillMaxSize().background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
+            // Pleyer boshqaruv paneli uchun ~64dp qoldiriladi: tik video ham ekranga to'liq sig'adi
+            val videoCap = (maxHeight - 64.dp).coerceAtLeast(160.dp)
             uri?.let {
                 VideoPlayer(
                     uri = it,
                     modifier = Modifier.fillMaxWidth(),
                     autoPlay = true,
-                    cues = cues
+                    cues = cues,
+                    maxVideoHeight = videoCap
                 )
             } ?: Text("Video tanlanmagan", color = Color.White)
         }

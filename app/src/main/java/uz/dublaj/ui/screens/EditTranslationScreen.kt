@@ -5,7 +5,10 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -17,10 +20,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uz.dublaj.data.TranslationUnit
@@ -31,7 +36,7 @@ import uz.dublaj.util.SegmentRecorder
 import uz.dublaj.util.SrtExporter
 import uz.dublaj.ui.viewmodel.PipelineViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditTranslationScreen(
     vm: PipelineViewModel,
@@ -48,6 +53,9 @@ fun EditTranslationScreen(
     var onlyProblems by remember { mutableStateOf(units.any { it.check }) }
     var onlyNoVoice by remember { mutableStateOf(false) }
     var seekMs by remember { mutableStateOf<Long?>(null) }
+    var seekTick by remember { mutableIntStateOf(0) }
+    // Klaviatura ochilganda video/filtrlar yig'ishtiriladi — matn maydoni uchun joy qoladi
+    val imeVisible = WindowInsets.isImeVisible
     var seqMode by remember { mutableStateOf(false) }
     var seqIndex by remember { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
@@ -127,57 +135,60 @@ fun EditTranslationScreen(
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            // Video preview + seek
-            videoUri?.let { uri ->
-                VideoPlayer(
-                    uri = uri,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    seekMs = seekMs
-                )
-            }
-
-            // Filters + sequential
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FilterChip(
-                    selected = onlyProblems,
-                    onClick = { onlyProblems = !onlyProblems },
-                    label = { Text("⚠ Muammoli") }
-                )
-                FilterChip(
-                    selected = onlyNoVoice,
-                    onClick = { onlyNoVoice = !onlyNoVoice },
-                    label = { Text("Ovoz yo'q") }
-                )
-                Spacer(Modifier.weight(1f))
-                TextButton(onClick = { vm.autoAssignRoles() }) { Text("Spiker±") }
-                if (!seqMode) {
-                    TextButton(onClick = {
-                        seqMode = true
-                        seqIndex = units.indexOfFirst { !it.hasUserVoice }.takeIf { it >= 0 } ?: 0
-                    }) { Text("Ketma-ket") }
-                } else {
-                    TextButton(onClick = { seqMode = false; seqIndex = -1 }) { Text("To'xtat") }
+            if (!imeVisible) {
+                // Video preview + seek
+                videoUri?.let { uri ->
+                    VideoPlayer(
+                        uri = uri,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        seekMs = seekMs,
+                        seekToken = seekTick,
+                        maxVideoHeight = 220.dp
+                    )
                 }
-            }
 
-            Text(
-                "Vaqtni bosing → video shu joyga o'tadi. Mikrofon → o'z ovozi. 🔄 → faqat shu gapni qayta tarjima.",
-                style = MaterialTheme.typography.bodySmall,
-                color = cs.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-            )
+                // Filters + sequential
+                FlowRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    FilterChip(
+                        selected = onlyProblems,
+                        onClick = { onlyProblems = !onlyProblems },
+                        label = { Text("⚠ Muammoli") }
+                    )
+                    FilterChip(
+                        selected = onlyNoVoice,
+                        onClick = { onlyNoVoice = !onlyNoVoice },
+                        label = { Text("Ovoz yo'q") }
+                    )
+                    TextButton(onClick = { vm.autoAssignRoles() }) { Text("Spiker±") }
+                    if (!seqMode) {
+                        TextButton(onClick = {
+                            seqMode = true
+                            seqIndex = units.indexOfFirst { !it.hasUserVoice }.takeIf { it >= 0 } ?: 0
+                        }) { Text("Ketma-ket") }
+                    } else {
+                        TextButton(onClick = { seqMode = false; seqIndex = -1 }) { Text("To'xtat") }
+                    }
+                }
+
+                Text(
+                    "Vaqtni bosing → video shu joyga o'tadi. Mikrofon → o'z ovozi. 🔄 → faqat shu gapni qayta tarjima.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
@@ -190,7 +201,7 @@ fun EditTranslationScreen(
                         vm = vm,
                         busy = busy,
                         highlightSeq = seqMode && index == seqIndex,
-                        onSeek = { seekMs = (unit.start * 1000).toLong() },
+                        onSeek = { seekMs = (unit.start * 1000).toLong(); seekTick++ },
                         onRecorded = {
                             if (seqMode) {
                                 val next = (index + 1 until units.size).firstOrNull { !units[it].hasUserVoice }
@@ -208,6 +219,7 @@ fun EditTranslationScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UnitCard(
     unit: TranslationUnit,
@@ -226,6 +238,7 @@ private fun UnitCard(
     var recProgress by remember(unit.id) { mutableStateOf(0.0) }
     var recorder by remember(unit.id) { mutableStateOf<SegmentRecorder?>(null) }
     val scope = rememberCoroutineScope()
+    val bringIntoView = remember { BringIntoViewRequester() }
 
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -337,7 +350,15 @@ private fun UnitCard(
                     text = it
                     vm.updateUzText(index, it)
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(bringIntoView)
+                    .onFocusEvent { f ->
+                        if (f.isFocused) scope.launch {
+                            delay(350)   // klaviatura ochilib bo'lishini kutamiz
+                            bringIntoView.bringIntoView()
+                        }
+                    },
                 shape = MaterialTheme.shapes.medium,
                 label = { Text("O'zbekcha") }
             )

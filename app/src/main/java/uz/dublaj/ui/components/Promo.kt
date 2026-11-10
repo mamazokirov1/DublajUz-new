@@ -84,8 +84,9 @@ fun QuickActionTile(
                     )
                 }
             }
-            Text(title, style = MaterialTheme.typography.titleMedium, color = content, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = sub, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Matn kesilmasin: so'zlar to'liq ko'rinadi, kerak bo'lsa qator ko'payadi
+            Text(title, style = MaterialTheme.typography.titleMedium, color = content)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = sub)
         }
     }
 }

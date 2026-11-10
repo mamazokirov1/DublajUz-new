@@ -194,7 +194,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                 Column(Modifier.weight(1f)) {
                     Text(
                         entry.title.ifBlank { dateOf(entry.createdAt) },
-                        style = MaterialTheme.typography.titleMedium, maxLines = 1
+                        style = MaterialTheme.typography.titleMedium, maxLines = 2
                     )
                     Text(
                         "${dateOf(entry.createdAt)} • ${fmtSize(entry.sizeBytes)}",

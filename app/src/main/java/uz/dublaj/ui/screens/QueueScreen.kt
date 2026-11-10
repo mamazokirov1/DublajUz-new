@@ -162,7 +162,7 @@ private fun QueueRow(item: QueueItem, onRemove: () -> Unit) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 2)
                     Text(
                         when (item.status) {
                             QueueStatus.WAITING -> "Kutilmoqda"
@@ -171,7 +171,7 @@ private fun QueueRow(item: QueueItem, onRemove: () -> Unit) {
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = if (item.status == QueueStatus.FAILED) cs.error else cs.onSurfaceVariant,
-                        maxLines = 2
+                        maxLines = 4
                     )
                 }
                 if (item.status != QueueStatus.RUNNING) {

@@ -1,6 +1,10 @@
 package uz.dublaj.ui.components
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -20,8 +24,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import uz.dublaj.util.OutputUtils
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
@@ -41,9 +53,28 @@ fun VideoPlayer(
     autoPlay: Boolean = false,
     seekMs: Long? = null,
     subtitle: String? = null,
-    cues: List<SubCue> = emptyList()
+    cues: List<SubCue> = emptyList(),
+    /** Bir xil vaqtga qayta o'tish uchun: har bosishda oshiriladi. */
+    seekToken: Int = 0,
+    /** Video oynasining eng katta balandligi (tik videolar ekranni to'ldirib yubormasligi uchun). */
+    maxVideoHeight: Dp = Dp.Unspecified
 ) {
-    key(uri) { PlayerBody(uri, modifier, autoPlay, seekMs, subtitle, cues) }
+    key(uri) { PlayerBody(uri, modifier, autoPlay, seekMs, subtitle, cues, seekToken, maxVideoHeight) }
+}
+
+/** Ilova ichida ochilmasa — tizimdagi boshqa video ilovada ochish. */
+private fun openExternal(ctx: Context, uri: Uri) {
+    try {
+        val shared = if (uri.scheme == "file") OutputUtils.fileUri(ctx, File(uri.path ?: "")) else uri
+        val i = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(shared, "video/*")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (ctx !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        ctx.startActivity(i)
+    } catch (e: Exception) {
+        Toast.makeText(ctx, "Video ochuvchi ilova topilmadi", Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable
@@ -53,9 +84,13 @@ private fun PlayerBody(
     autoPlay: Boolean,
     seekMs: Long?,
     subtitle: String?,
-    cues: List<SubCue>
+    cues: List<SubCue>,
+    seekToken: Int,
+    maxVideoHeight: Dp
 ) {
     val cs = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
     var view by remember { mutableStateOf<VideoView?>(null) }
     var ready by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
@@ -81,7 +116,7 @@ private fun PlayerBody(
         } catch (_: Exception) {
         }
     }
-    LaunchedEffect(ready, seekMs) {
+    LaunchedEffect(ready, seekMs, seekToken) {
         val v = view ?: return@LaunchedEffect
         val ms = seekMs ?: return@LaunchedEffect
         if (!ready) return@LaunchedEffect
@@ -106,10 +141,26 @@ private fun PlayerBody(
             try { view?.stopPlayback() } catch (_: Exception) { }
         }
     }
+    // Ilova fonga o'tganda (ekran o'chganda, boshqa ilovaga o'tilganda) video ovozi to'xtasin
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_PAUSE) {
+                playing = false
+                try { view?.pause() } catch (_: Exception) { }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
 
+    val capDp = if (maxVideoHeight != Dp.Unspecified) maxVideoHeight else (screenHeightDp * 0.6f).dp
     Column(modifier.clip(MaterialTheme.shapes.medium).background(Color.Black)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val natural = maxWidth / aspect
+        val boxHeight = if (natural > capDp) capDp else natural
         Box(
-            Modifier.fillMaxWidth().aspectRatio(aspect),
+            Modifier.fillMaxWidth().height(boxHeight),
             contentAlignment = Alignment.Center
         ) {
             AndroidView(
@@ -186,12 +237,22 @@ private fun PlayerBody(
             }
             if (!ready && !failed) CircularProgressIndicator(color = Color.White)
             if (failed) {
-                Text(
-                    "Bu videoni ilova ichida ochib bo'lmadi",
-                    color = Color.White, style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
-                )
+                Column(
+                    Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Bu videoni ilova ichida ochib bo'lmadi",
+                        color = Color.White, style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    OutlinedButton(onClick = { openExternal(ctx, uri) }) {
+                        Text("Boshqa ilovada ochish", color = Color.White)
+                    }
+                }
             }
+        }
         }
         Row(
             Modifier.fillMaxWidth().background(cs.surfaceVariant).padding(horizontal = 4.dp),
