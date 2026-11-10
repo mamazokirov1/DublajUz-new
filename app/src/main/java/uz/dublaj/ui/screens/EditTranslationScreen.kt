@@ -45,7 +45,7 @@ fun EditTranslationScreen(
     val pending = units.count { it.check }
     val withVoice = units.count { it.hasUserVoice }
     var menu by remember { mutableStateOf(false) }
-    var onlyProblems by remember { mutableStateOf(false) }
+    var onlyProblems by remember { mutableStateOf(units.any { it.check }) }
     var onlyNoVoice by remember { mutableStateOf(false) }
     var seekMs by remember { mutableStateOf<Long?>(null) }
     var seqMode by remember { mutableStateOf(false) }

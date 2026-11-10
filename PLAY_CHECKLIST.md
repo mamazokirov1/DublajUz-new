@@ -68,3 +68,4 @@
 - Ovoz tezligi o'lchanadi (`VoiceCalibration`): tarjimaga "gapga necha belgi sig'adi" haqiqiy TTS tezligidan beriladi (avval qat'iy 16 belgi/s edi).
 - Erkak/ayol avtomatik aniqlanadi (`PitchEstimator` + `VoiceRoles`): Sozlamalar → Ovoz sifati → "Dublyaj ovozi" ni to'g'ri tanlang.
 - Ikkalasi ham videoni QAYTA aniqlash/tarjima qilganda ishlaydi.
+- v15-3: dublyajdan keyin hisobot — tezlashtirilgan (>1.2×) yoki kechikkan (>0.8 s) gaplar tahrir ekranida belgilanadi; natija kartasida "Ko'rib chiqish va tuzatish" tugmasi. Bunday belgilar tasdiqlashni to'smaydi.

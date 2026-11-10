@@ -346,7 +346,7 @@ fun HomeScreen(
                 // ---- jarayon holati
                 when (val s = state) {
                     is PipelineState.Running -> RunningBanner(s, cancelling, onCancel = { vm.cancel() })
-                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay, units)
+                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay, units, onEditTranslation)
                     is PipelineState.Error -> ErrorCard(
                         message = s.message,
                         onClose = { vm.resetState() },
@@ -667,7 +667,7 @@ private fun SetupCard(
 }
 
 @Composable
-private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj.data.TranslationUnit> = emptyList()) {
+private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj.data.TranslationUnit> = emptyList(), onReview: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cs = MaterialTheme.colorScheme
@@ -694,6 +694,22 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                     uz.dublaj.ui.components.SubCue(it.start, it.end, it.uzText)
                 }
             )
+            val toReview = units.count { it.check }
+            if (toReview > 0) {
+                Card(
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(containerColor = cs.tertiaryContainer)
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Hisobot: $toReview ta gapni tekshirish tavsiya etiladi", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Ular tezlashtirilgan yoki kechikkan. Matnni qisqartirib, qayta dublyaj qiling.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        FilledTonalButton(onClick = onReview) { Text("Ko'rib chiqish va tuzatish") }
+                    }
+                }
+            }
             Button(
                 onClick = { onPlay(Uri.fromFile(file)) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),

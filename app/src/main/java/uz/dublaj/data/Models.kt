@@ -1,5 +1,8 @@
 package uz.dublaj.data
 
+/** Dublyajdan keyingi hisobot belgisi: bunday gaplar tasdiqlashni to'smaydi. */
+const val DUB_ISSUE_PREFIX = "Dublyajda "
+
 data class TranscriptUnit(
     val id: Int,
     val start: Double,

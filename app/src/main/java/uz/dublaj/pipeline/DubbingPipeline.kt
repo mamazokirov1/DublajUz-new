@@ -50,6 +50,10 @@ class DubbingPipeline {
     }
 
     @Volatile private var cancelled = false
+
+    /** Oxirgi dublyaj hisoboti: gap id -> muammo matni (tezlashtirilgan / kechikkan gaplar). */
+    @Volatile var lastIssues: Map<Int, String> = emptyMap()
+        private set
     private var localVideo: File? = null
     private var workDir: WorkDir? = null
 
@@ -637,6 +641,7 @@ class DubbingPipeline {
         val clips = ArrayList<SegmentPlacer.Clip>()
         val usedText = HashMap<Int, String>()
         val lags = ArrayList<Double>()
+        val dubIssues = LinkedHashMap<Int, String>()
         val off = config.syncOffsetS.toDouble()
         SyncReport.add(
             context,
@@ -730,6 +735,12 @@ class DubbingPipeline {
                     val placeAt = c.placeAtSample.toDouble() / outSr
                     val lag = placeAt - sStart
                     lags.add(lag)
+                    val problems = ArrayList<String>()
+                    if (c.speed > 1.2f) problems.add("tezlashtirilgan ${SyncReport.f(c.speed.toDouble())}×")
+                    if (lag > 0.8) problems.add("${SyncReport.f(lag)} s kechikkan")
+                    if (problems.isNotEmpty()) {
+                        dubIssues[u.id] = uz.dublaj.data.DUB_ISSUE_PREFIX + problems.joinToString(", ") + " — matnni qisqartirsangiz tabiiyroq chiqadi"
+                    }
                     SyncReport.add(
                         context,
                         "#${u.id} s=${SyncReport.f(sStart)} slot=${SyncReport.f(slot)} tts=${SyncReport.f(seg.durationSec)} " +
@@ -788,6 +799,7 @@ class DubbingPipeline {
             "XULOSA: ${lags.size} gap, o'rtacha kechikish ${SyncReport.sf(if (lags.isEmpty()) 0.0 else lags.average())} s, eng katta ${SyncReport.sf(maxLag)} s, tezlashtirilgan(>1.2x) $fast"
         )
         if (maxLag > 1.0) notes.add("eng katta kechikish ${SyncReport.f(maxLag)} s")
+        lastIssues = dubIssues
         progress(1f, if (notes.isEmpty()) "Tayyor" else "Tayyor (${notes.joinToString(", ")})")
         return outFile
     }

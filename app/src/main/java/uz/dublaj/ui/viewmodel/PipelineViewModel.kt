@@ -560,7 +560,7 @@ class PipelineViewModel : ViewModel() {
     fun approveTranslation(context: Context) {
         val units = _translationUnits.value
         if (units.isEmpty()) return
-        val pending = units.count { it.check }
+        val pending = units.count { it.check && it.issue?.startsWith(uz.dublaj.data.DUB_ISSUE_PREFIX) != true }
         if (pending > 0) {
             _state.value = PipelineState.Error(
                 "$pending ta segment tarjima qilinmagan (⚠). Tarjimani tahrirlab chiqing, keyin tasdiqlang."
@@ -602,6 +602,16 @@ class PipelineViewModel : ViewModel() {
             // Free limit hisobi
             val dur = units.lastOrNull()?.end ?: 60.0
             if (!cfg.isPro) UsageStore.recordDub(app, dur)
+            // Hisobot: tezlashtirilgan/kechikkan gaplar tahrir ekranida "tekshirilsin" deb belgilanadi
+            val issues = pipeline.lastIssues
+            val flagged = units.map { u ->
+                val clean = if (u.issue?.startsWith(uz.dublaj.data.DUB_ISSUE_PREFIX) == true) u.copy(check = false, issue = null) else u
+                issues[u.id]?.let { clean.copy(check = true, issue = it) } ?: clean
+            }
+            if (flagged != units) {
+                _translationUnits.value = flagged
+                withContext(Dispatchers.IO) { pipeline.saveTranslation(app, flagged) }
+            }
             _state.value = PipelineState.Success(out.absolutePath)
             toast("Dublyaj tayyor ✓")
             PipelineService.notifyDone(app, "Dublyaj tayyor", title.ifBlank { "Video dublyaj qilindi" })
