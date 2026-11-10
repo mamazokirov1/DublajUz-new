@@ -502,6 +502,20 @@ fun SettingsScreen(
                         "Server ishlamasa, offline ovoz zaxira bo'ladi (agar uning fayllari qo'shilgan bo'lsa).",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
+                Text(
+                    "Qanday ulash (qisqa):
+" +
+                        "1) Serverda /health va /tts API ishga tushiring (repo server/ papkasi).
+" +
+                        "2) HTTPS manzil oling (ngrok / Cloudflare Tunnel).
+" +
+                        "3) Pastda manzil + token yozing → «Serverni tekshirish».
+" +
+                        "4) Ovoz dvigatelini Chatterbox qiling.
+" +
+                        "Oddiy foydalanuvchiga Offline (VITS) yetarli — bu bo'lim faqat ilg'orlar uchun.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
                 Text("Ovoz dvigateli", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf("vits" to "Offline (VITS)", "chatterbox" to "Chatterbox").forEach { (id, label) ->

@@ -4,11 +4,11 @@ import android.net.Uri
 import android.widget.VideoView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -18,22 +18,43 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
+/** Subtitr bo'lagi: [startSec], [endSec] oralig'ida [text]. */
+data class SubCue(val startSec: Double, val endSec: Double, val text: String)
+
 /**
- * Ilova ichidagi video pleyer: ijro/pauza, surish (seek), vaqt.
- * Dublyaj qilinadigan videoni ham, tayyor natijani ham shu yerda ko'rish mumkin.
+ * Ilova ichidagi video pleyer.
+ * [seekMs] — tashqaridan vaqtga o'tish.
+ * [cues] — vaqt bilan sinxron subtitr.
+ * [subtitle] — qo'lda berilgan matn (cues yo'q bo'lsa).
  */
 @Composable
-fun VideoPlayer(uri: Uri, modifier: Modifier = Modifier, autoPlay: Boolean = false) {
-    key(uri) { PlayerBody(uri, modifier, autoPlay) }
+fun VideoPlayer(
+    uri: Uri,
+    modifier: Modifier = Modifier,
+    autoPlay: Boolean = false,
+    seekMs: Long? = null,
+    subtitle: String? = null,
+    cues: List<SubCue> = emptyList()
+) {
+    key(uri) { PlayerBody(uri, modifier, autoPlay, seekMs, subtitle, cues) }
 }
 
 @Composable
-private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
+private fun PlayerBody(
+    uri: Uri,
+    modifier: Modifier,
+    autoPlay: Boolean,
+    seekMs: Long?,
+    subtitle: String?,
+    cues: List<SubCue>
+) {
     val cs = MaterialTheme.colorScheme
     var view by remember { mutableStateOf<VideoView?>(null) }
     var ready by remember { mutableStateOf(false) }
@@ -44,6 +65,13 @@ private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
     var failed by remember { mutableStateOf(false) }
     var aspect by remember { mutableFloatStateOf(16f / 9f) }
 
+    val posSec = pos / 1000.0
+    val liveSub = remember(posSec, cues, subtitle) {
+        if (cues.isNotEmpty()) {
+            cues.firstOrNull { posSec >= it.startSec - 0.05 && posSec <= it.endSec + 0.15 }?.text
+        } else subtitle
+    }
+
     LaunchedEffect(ready, playing) {
         val v = view ?: return@LaunchedEffect
         if (!ready) return@LaunchedEffect
@@ -53,13 +81,24 @@ private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
         } catch (_: Exception) {
         }
     }
+    LaunchedEffect(ready, seekMs) {
+        val v = view ?: return@LaunchedEffect
+        val ms = seekMs ?: return@LaunchedEffect
+        if (!ready) return@LaunchedEffect
+        try {
+            v.seekTo(ms.toInt().coerceAtLeast(0))
+            pos = ms.toInt()
+            playing = true
+        } catch (_: Exception) {
+        }
+    }
     LaunchedEffect(ready) {
         while (ready) {
             val v = view
             if (v != null && !dragging) {
                 try { pos = v.currentPosition } catch (_: Exception) { }
             }
-            delay(250)
+            delay(120)
         }
     }
     DisposableEffect(Unit) {
@@ -82,7 +121,7 @@ private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
                                 aspect = (mp.videoWidth.toFloat() / mp.videoHeight).coerceIn(0.5f, 2.4f)
                             }
                             ready = true
-                            seekTo(1)                    // birinchi kadr ko'rinib turishi uchun
+                            seekTo(1)
                             if (autoPlay) playing = true
                         }
                         setOnCompletionListener {
@@ -123,6 +162,28 @@ private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
                     }
                 }
             }
+            if (!liveSub.isNullOrBlank()) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.7f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            liveSub,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
             if (!ready && !failed) CircularProgressIndicator(color = Color.White)
             if (failed) {
                 Text(
@@ -150,17 +211,16 @@ private fun PlayerBody(uri: Uri, modifier: Modifier, autoPlay: Boolean) {
                     pos = it.toInt()
                 },
                 onValueChangeFinished = {
-                    try { view?.seekTo(pos) } catch (_: Exception) { }
                     dragging = false
+                    try { view?.seekTo(pos) } catch (_: Exception) {}
                 },
-                valueRange = 0f..maxV,
-                enabled = ready,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                enabled = ready
             )
             Text(
-                "${fmtDuration(pos.toLong())} / ${fmtDuration(duration.toLong())}",
+                fmtTime(pos / 1000.0) + " / " + fmtTime(duration / 1000.0),
                 style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.padding(end = 10.dp, start = 4.dp)
+                modifier = Modifier.padding(end = 8.dp)
             )
         }
     }

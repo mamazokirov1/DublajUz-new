@@ -419,6 +419,36 @@ class PipelineViewModel : ViewModel() {
         _approved.value = false
     }
 
+    /**
+     * Spikerlarni taxminiy ajratish:
+     * gaplar orasidagi pauza ≥ [gapSec] bo'lsa yangi spiker deb hisoblab
+     * erkak/ayol navbat bilan belgilanadi. Bu ML diarization emas — qo'lda tuzatish mumkin.
+     */
+    fun autoAssignRoles(gapSec: Double = 1.2) {
+        val list = _translationUnits.value.sortedBy { it.start }.toMutableList()
+        if (list.isEmpty()) return
+        var role = "erkak"
+        var prevEnd = list.first().start
+        for (i in list.indices) {
+            val u = list[i]
+            if (i > 0 && u.start - prevEnd >= gapSec) {
+                role = if (role == "erkak") "ayol" else "erkak"
+            }
+            list[i] = u.copy(voiceRole = role)
+            prevEnd = u.end
+        }
+        // id bo'yicha asl tartibga qaytarish
+        val byId = list.associateBy { it.id }
+        _translationUnits.value = _translationUnits.value.map { byId[it.id] ?: it }
+        _approved.value = false
+        toast("Spikerlar taxminan belgilandi (erkak/ayol). Kerak bo'lsa qo'lda tuzating.")
+    }
+
+    fun clearAllRoles() {
+        _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = "") }
+        _approved.value = false
+    }
+
     fun setUserVoice(index: Int, has: Boolean) {
         val list = _translationUnits.value.toMutableList()
         if (index !in list.indices) return
@@ -442,6 +472,75 @@ class PipelineViewModel : ViewModel() {
 
     fun segmentVoiceFile(context: Context, unitId: Int): java.io.File =
         pipeline.work(context.applicationContext).segmentVoice(unitId)
+
+    /** Bitta gapni qayta tarjima. */
+    fun retranslateUnit(context: Context, index: Int) {
+        val app = context.applicationContext
+        if (isBusy) { toast("Boshqa jarayon ketyapti — biroz kuting"); return }
+        if (!_config.value.onlineReady) {
+            toast("AI kaliti kerak. Sozlamalar → Tarjima (AI)")
+            return
+        }
+        viewModelScope.launch {
+            _busy.value = true
+            _modelStatus.value = "Gap qayta tarjima qilinmoqda…"
+            try {
+                val list = withContext(Dispatchers.IO) {
+                    pipeline.translateSingle(app, _config.value, _translationUnits.value, index)
+                }
+                _translationUnits.value = list
+                _approved.value = false
+                toast("Gap yangilandi ✓")
+            } catch (e: Exception) {
+                toast(friendlyError(e.message))
+            } finally {
+                _busy.value = false
+                _modelStatus.value = null
+            }
+        }
+    }
+
+    /** Yozilgan foydalanuvchi ovozini tinglash. */
+    fun playUserVoice(context: Context, unitId: Int) {
+        viewModelScope.launch {
+            try {
+                val f = withContext(Dispatchers.IO) {
+                    pipeline.work(context.applicationContext).segmentVoice(unitId)
+                }
+                if (!f.isFile || f.length() < 44) {
+                    toast("Bu gap uchun ovoz yozilmagan")
+                    return@launch
+                }
+                withContext(Dispatchers.IO) {
+                    val (pcm, sr) = uz.dublaj.util.SegmentRecorder.readWavPcm(f)
+                    if (pcm.isEmpty()) return@withContext
+                    uz.dublaj.util.PcmPlayer.play(pcm, sr)
+                }
+            } catch (e: Exception) {
+                toast("Ijro xato: ${e.message}")
+            }
+        }
+    }
+
+    /** Foydalanuvchiga tushunarli xato matni. */
+    fun friendlyError(raw: String?): String {
+        val m = (raw ?: "").lowercase()
+        return when {
+            m.isBlank() -> "Noma'lum xato. Qayta urinib ko'ring."
+            "kalit" in m || "api" in m || "401" in m || "403" in m ->
+                "API kalit noto'g'ri yoki yo'q. Sozlamalar → Tarjima (AI) dan tekshiring."
+            "internet" in m || "unable to resolve" in m || "failed to connect" in m || "timeout" in m ->
+                "Internet yo'q yoki sekin. Wi‑Fi/mobil internetni tekshirib qayta urining."
+            "joy" in m || "space" in m || "xotira" in m || "enospc" in m ->
+                "Telefonda bo'sh joy yetarli emas. Sozlamalar → Xotira dan tozalang."
+            "vits" in m || "onnx" in m || "ovoz komponenti" in m ->
+                "Ovoz modeli yo'q. Sozlamalarda «Ovozni internetdan yuklash» ni bosing."
+            "whisper" in m || "matn aniqlash" in m ->
+                "Matn aniqlash modeli yo'q. Sozlamalarda Whisper yuklang."
+            "bekor" in m || "cancel" in m -> "Bekor qilindi."
+            else -> raw!!.take(180)
+        }
+    }
 
     fun saveTranslations(context: Context) {
         val app = context.applicationContext

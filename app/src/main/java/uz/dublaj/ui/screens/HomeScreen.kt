@@ -288,12 +288,65 @@ fun HomeScreen(
                         onAuto = autoImport,
                         onManual = onSettings
                     )
+                } else {
+                    // Holat yorliqlari (offline / tarjima)
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AssistChip(
+                            onClick = {},
+                            label = { Text(if (models.whisper && ttsOk) "Offline ovoz ✓" else "Offline ovoz") },
+                            leadingIcon = { Icon(Icons.Default.PhoneAndroid, null, Modifier.size(16.dp)) }
+                        )
+                        AssistChip(
+                            onClick = onSettings,
+                            label = {
+                                Text(
+                                    when {
+                                        config.onlineReady -> "Tarjima: onlayn ✓"
+                                        config.onlineTranslate -> "Tarjima: kalit kerak"
+                                        else -> "Tarjima o'chiq"
+                                    }
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    if (config.onlineReady) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                    null, Modifier.size(16.dp)
+                                )
+                            }
+                        )
+                    }
+                    // Asl ovoz balandligi (tez sozlash)
+                    Card(shape = MaterialTheme.shapes.medium) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                "Asl video ovozi: ${(config.originalVolume * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            Slider(
+                                value = config.originalVolume,
+                                onValueChange = { vm.setConfig(config.copy(originalVolume = it), context) },
+                                valueRange = 0f..1f
+                            )
+                            Text(
+                                "Dublaj ovozi: ${(config.uzbekVolume * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                            Slider(
+                                value = config.uzbekVolume,
+                                onValueChange = { vm.setConfig(config.copy(uzbekVolume = it), context) },
+                                valueRange = 0.3f..1.5f
+                            )
+                        }
+                    }
                 }
 
                 // ---- jarayon holati
                 when (val s = state) {
                     is PipelineState.Running -> RunningBanner(s, cancelling, onCancel = { vm.cancel() })
-                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay)
+                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay, units)
                     is PipelineState.Error -> ErrorCard(
                         message = s.message,
                         onClose = { vm.resetState() },
@@ -614,7 +667,7 @@ private fun SetupCard(
 }
 
 @Composable
-private fun SuccessCard(file: File, onPlay: (Uri) -> Unit) {
+private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj.data.TranslationUnit> = emptyList()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cs = MaterialTheme.colorScheme
@@ -634,7 +687,13 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit) {
                     Text("Tarixda saqlandi ✓", style = MaterialTheme.typography.bodySmall, color = cs.onSecondaryContainer.copy(alpha = 0.8f))
                 }
             }
-            VideoPlayer(Uri.fromFile(file), Modifier.fillMaxWidth())
+            VideoPlayer(
+                Uri.fromFile(file),
+                Modifier.fillMaxWidth(),
+                cues = units.filter { it.uzText.isNotBlank() }.map {
+                    uz.dublaj.ui.components.SubCue(it.start, it.end, it.uzText)
+                }
+            )
             Button(
                 onClick = { onPlay(Uri.fromFile(file)) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
@@ -707,11 +766,22 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit) {
 private fun hintFor(message: String): String? {
     val m = message.lowercase()
     return when {
-        "vits" in m || "ovoz komponenti" in m -> "Sozlamalar bo'limida o'zbekcha ovoz fayllarini (.onnx va .json) qo'shing."
-        "gemini" in m || "api" in m || "kalit" in m -> "Sozlamalar → Tarjima (AI) bo'limida provayderni tanlab, API kalitini kiriting."
-        "joy" in m || "space" in m || "xotira" in m -> "Telefonda bo'sh joy yetarli emas. Sozlamalar → Xotira bo'limida vaqtinchalik fayllarni tozalang."
-        "kodek" in m || "codec" in m -> "Videoni H.264 (MP4) formatiga o'giring yoki boshqa video tanlang."
-        "whisper" in m || "matn aniqlash" in m -> "Sozlamalar bo'limida matn aniqlash komponentini tekshiring."
+        "vits" in m || "ovoz komponenti" in m || "onnx" in m ->
+            "Sozlamalar → «Ovozni internetdan yuklash» ni bosing (.onnx + .json)."
+        "gemini" in m || "api" in m || "kalit" in m || "401" in m || "403" in m ->
+            "Sozlamalar → Tarjima (AI): provayder + API kalit. Google AI Studio dan bepul kalit oling."
+        "internet" in m || "unable to resolve" in m || "failed to connect" in m || "timeout" in m || "network" in m ->
+            "Internet yo'q yoki sekin. Wi‑Fi yoki mobil internetni yoqing va qayta urining."
+        "joy" in m || "space" in m || "xotira" in m || "enospc" in m ->
+            "Bo'sh joy yetarli emas. Sozlamalar → Xotira → vaqtinchalik fayllarni tozalang."
+        "kodek" in m || "codec" in m || "mux" in m ->
+            "Videoni H.264 (MP4) qilib qayta saqlang yoki boshqa video tanlang."
+        "whisper" in m || "matn aniqlash" in m ->
+            "Sozlamalar → Whisper modelini yuklang (base tavsiya)."
+        "tasdiq" in m || "approved" in m ->
+            "Avval tarjimani tahrirlab «Tasdiqlash» ni bosing."
+        "bekor" in m || "cancel" in m ->
+            "Jarayon bekor qilindi. Qayta boshlashingiz mumkin."
         else -> null
     }
 }

@@ -506,6 +506,62 @@ class DubbingPipeline {
 
     fun isApproved(context: Context): Boolean = ensure(context).approvedFlag.isFile
 
+    /**
+     * Bitta gapni qayta tarjima qiladi (tahrir ekrani).
+     * Mavjud unitlar ro'yxatini yangilab qaytaradi.
+     */
+    fun translateSingle(
+        context: Context,
+        config: AppConfig,
+        units: List<TranslationUnit>,
+        index: Int
+    ): List<TranslationUnit> {
+        if (index !in units.indices) return units
+        if (!config.onlineReady) throw IllegalStateException(
+            "Tarjima uchun AI kaliti kerak. Sozlamalar → Tarjima (AI) bo'limida kalitni kiriting."
+        )
+        val u = units[index]
+        val norm = TextNormalizer.fromAssets(context.applicationContext)
+        val gem = config.newTranslator()
+        val slot = (u.end - u.start).coerceAtLeast(0.5)
+        val item = GeminiTranslator.Item(
+            u.id, u.text, (slot * GeminiTranslator.CHARS_PER_SEC).toInt().coerceAtLeast(20)
+        )
+        val ctxPairs = ArrayList<Pair<String, String>>()
+        for (k in maxOf(0, index - 3) until index) {
+            val p = units[k]
+            if (p.uzText.isNotBlank()) ctxPairs.add(p.text to p.uzText)
+        }
+        val nextHint = units.getOrNull(index + 1)?.text
+        val got = gem.translateChunk(
+            u.language.ifBlank { "en" },
+            ctxPairs,
+            listOf(item),
+            nextHint,
+            GeminiTranslator.Style(
+                config.videoContext, config.addressForm, config.tone,
+                config.glossary, config.aiExtraPrompt, config.aiTemperature
+            )
+        )
+        val g = got[u.id] ?: throw IllegalStateException("AI bu gapga javob bermadi. Qayta urinib ko'ring.")
+        val rawUz = g.uz.trim()
+        val uz = norm.normalize(rawUz)
+        val qa = TranslationQa.issue(u.text, rawUz) ?: TranslationQa.issue(u.text, uz)
+        val alts = ArrayList<String>()
+        alts.add(uz)
+        g.short?.let { s ->
+            val n = norm.normalize(s)
+            if (n.isNotBlank() && n !in alts) alts.add(n)
+        }
+        val updated = units.toMutableList()
+        updated[index] = u.copy(
+            uzText = uz, check = qa != null, issue = qa, alts = alts
+        )
+        saveTranslation(context, updated)
+        return updated
+    }
+
+
     // ------------------------------------------------------------------ 3) dublyaj
 
     fun dub(
@@ -627,6 +683,17 @@ class DubbingPipeline {
                     seg = VitsSynthesizer.SegmentAudio(pcmU, srU, 1f)
                     Timber.i("Gap #${u.id}: foydalanuvchi ovozi")
                 } else {
+                    // Erkak/ayol/bola izohi → pitch (taxminiy, alohida model emas)
+                    val basePitch = config.voicePitch
+                    val rolePitch = when (u.voiceRole) {
+                        "ayol" -> basePitch + 3f
+                        "bola" -> basePitch + 5f
+                        "erkak" -> basePitch - 2f
+                        else -> basePitch
+                    }
+                    if (vitsOk) {
+                        try { vits().pitchSemitones = rolePitch } catch (_: Exception) {}
+                    }
                     seg = synthSeg(u.uzText, slot)
                 }
                 // Sig'masa: qisqaroq tarjima nomzodini sinaymiz (faqat foydalanuvchi matnni o'zgartirmagan bo'lsa)
