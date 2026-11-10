@@ -503,16 +503,11 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
                 Text(
-                    "Qanday ulash (qisqa):
-" +
-                        "1) Serverda /health va /tts API ishga tushiring (repo server/ papkasi).
-" +
-                        "2) HTTPS manzil oling (ngrok / Cloudflare Tunnel).
-" +
-                        "3) Pastda manzil + token yozing → «Serverni tekshirish».
-" +
-                        "4) Ovoz dvigatelini Chatterbox qiling.
-" +
+                    "Qanday ulash (qisqa):\n" +
+                        "1) Serverda /health va /tts API ishga tushiring (repo server/ papkasi).\n" +
+                        "2) HTTPS manzil oling (ngrok / Cloudflare Tunnel).\n" +
+                        "3) Pastda manzil + token yozing → «Serverni tekshirish».\n" +
+                        "4) Ovoz dvigatelini Chatterbox qiling.\n" +
                         "Oddiy foydalanuvchiga Offline (VITS) yetarli — bu bo'lim faqat ilg'orlar uchun.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
@@ -1104,5 +1099,4 @@ private fun SwitchRow(title: String, desc: String, checked: Boolean, onChange: (
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
-
 }
