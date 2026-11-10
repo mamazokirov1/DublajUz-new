@@ -30,6 +30,8 @@ object ConfigStore {
             rolePitchMale = sp.getFloat("rolePitchMale", d.rolePitchMale),
             rolePitchFemale = sp.getFloat("rolePitchFemale", d.rolePitchFemale),
             rolePitchChild = sp.getFloat("rolePitchChild", d.rolePitchChild),
+            autoVoiceRole = sp.getBoolean("autoVoiceRole", d.autoVoiceRole),
+            baseVoiceFemale = sp.getBoolean("baseVoiceFemale", d.baseVoiceFemale),
             expertMode = sp.getBoolean("expertMode", d.expertMode),
             themeMode = sp.getInt("themeMode", d.themeMode),
             dynamicColor = sp.getBoolean("dynamicColor", d.dynamicColor),
@@ -105,6 +107,8 @@ object ConfigStore {
             .putFloat("rolePitchMale", c.rolePitchMale)
             .putFloat("rolePitchFemale", c.rolePitchFemale)
             .putFloat("rolePitchChild", c.rolePitchChild)
+            .putBoolean("autoVoiceRole", c.autoVoiceRole)
+            .putBoolean("baseVoiceFemale", c.baseVoiceFemale)
             .putBoolean("expertMode", c.expertMode)
             .putInt("themeMode", c.themeMode)
             .putBoolean("dynamicColor", c.dynamicColor)

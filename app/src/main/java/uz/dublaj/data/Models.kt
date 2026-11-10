@@ -5,7 +5,9 @@ data class TranscriptUnit(
     val start: Double,
     val end: Double,
     val text: String,
-    val language: String = "en"
+    val language: String = "en",
+    /** Asl nutqning asosiy ton chastotasi, Hz (0 = aniqlanmagan). */
+    val f0: Float = 0f
 )
 
 data class TranslationUnit(
@@ -61,6 +63,10 @@ data class AppConfig(
     val rolePitchMale: Float = -2f,
     val rolePitchFemale: Float = 3f,
     val rolePitchChild: Float = 5f,
+    /** Gapirayotgan jinsini asl nutqdan avtomatik aniqlab, ovozga tembr siljishini qo'llash. */
+    val autoVoiceRole: Boolean = true,
+    /** Asosiy dublyaj ovozi (VITS modeli) ayol ovozimi. false = erkak. */
+    val baseVoiceFemale: Boolean = false,
     // ---- ko'rinish
     /** false = Oddiy (kam sozlama), true = Mutaxassis (hamma sozlama). */
     val expertMode: Boolean = false,

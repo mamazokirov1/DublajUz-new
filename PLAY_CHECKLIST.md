@@ -63,3 +63,8 @@
 - Yangi sozlamalar: Audio sifati (Standart / Yuqori 44.1 kHz, 160 kbps), ayol/erkak/bola tembri siljishi.
 - Yangi: Sozlamalar → Ilova haqida → "Maxfiylik siyosati" (`BuildConfig.PRIVACY_URL`). GitHub Pages yoqilganini tekshiring.
 - Qoldi (qo'lda): VITS modeli litsenziyasi (MMS asosida bo'lsa CC-BY-NC — reklama/Pro bilan mos emas), AdMob/Billing ID lari, Data safety, yopiq test (shaxsiy akkaunt: 12 tester × 14 kun).
+
+## v15 (1-qism): sifat
+- Ovoz tezligi o'lchanadi (`VoiceCalibration`): tarjimaga "gapga necha belgi sig'adi" haqiqiy TTS tezligidan beriladi (avval qat'iy 16 belgi/s edi).
+- Erkak/ayol avtomatik aniqlanadi (`PitchEstimator` + `VoiceRoles`): Sozlamalar → Ovoz sifati → "Dublyaj ovozi" ni to'g'ri tanlang.
+- Ikkalasi ham videoni QAYTA aniqlash/tarjima qilganda ishlaydi.

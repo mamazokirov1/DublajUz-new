@@ -280,11 +280,18 @@ class DubbingPipeline {
         trimmedWav.delete()
         val fixes = SttFixes.load(context, File(dir.root, "stt_fixes.json"))
         val fixedUnits: List<TranscriptUnit> = SttFixes.apply(mapped, fixes)
-        val units: List<TranscriptUnit> = if (!config.snapSpeech) fixedUnits else try {
+        val snapped: List<TranscriptUnit> = if (!config.snapSpeech) fixedUnits else try {
             SpeechSnap.refine(dir.extractedWav, fixedUnits)
         } catch (e: Exception) {
             Timber.w(e, "SpeechSnap ishlamadi")
             fixedUnits
+        }
+        // Gapirayotgan jinsini aniqlash uchun ton chastotasi (extracted.wav o'chirilishidan oldin)
+        val units: List<TranscriptUnit> = try {
+            PitchEstimator.annotate(dir.extractedWav, snapped)
+        } catch (e: Exception) {
+            Timber.w(e, "PitchEstimator ishlamadi")
+            snapped
         }
         SyncReport.reset(context, "STT vaqtlari (xom Whisper -> moslangan), moslash=${config.snapSpeech}, ${units.size} segment")
         val rawById = fixedUnits.associateBy { it.id }
@@ -317,6 +324,7 @@ class DubbingPipeline {
             arr.put(JSONObject().apply {
                 put("id", u.id); put("start", u.start); put("end", u.end)
                 put("text", u.text); put("language", u.language)
+                put("f0", u.f0.toDouble())
             })
         }
         dir.transcriptJson.writeText(JSONObject().put("meta", meta).put("units", arr).toString(2))
@@ -332,7 +340,8 @@ class DubbingPipeline {
             val u = arr.getJSONObject(i)
             TranscriptUnit(
                 u.getInt("id"), u.getDouble("start"), u.getDouble("end"),
-                u.getString("text"), u.optString("language", "en")
+                u.getString("text"), u.optString("language", "en"),
+                u.optDouble("f0", 0.0).toFloat()
             )
         }
     }
@@ -358,6 +367,10 @@ class DubbingPipeline {
         }
 
         val norm = TextNormalizer.fromAssets(context.applicationContext)
+        progress(0.01f, "Ovoz tezligi o'lchanmoqda…")
+        val cps = uz.dublaj.tts.VoiceCalibration.charsPerSec(context, dir, config)
+        val autoRoles: Map<Int, String> =
+            if (config.autoVoiceRole) uz.dublaj.text.VoiceRoles.assign(src, config.baseVoiceFemale) else emptyMap()
         val result = ArrayList<TranslationUnit>()
         var failed = 0
         var flagged = 0
@@ -383,7 +396,7 @@ class DubbingPipeline {
                 val items = chunk.mapIndexed { k, u ->
                     val nextStart = src.getOrNull(idx + k + 1)?.start
                     val slot = maxOf(u.end - u.start, (nextStart ?: (u.end + 1.5)) - u.start)
-                    GeminiTranslator.Item(u.id, u.text, (slot * GeminiTranslator.CHARS_PER_SEC).toInt().coerceAtLeast(20))
+                    GeminiTranslator.Item(u.id, u.text, (slot * cps).toInt().coerceAtLeast(20))
                 }
                 // oldingi 3 gapning tarjimasi — kontekst sifatida; keyingi gap — maslahat
                 val ctxPairs = ArrayList<Pair<String, String>>()
@@ -436,11 +449,11 @@ class DubbingPipeline {
                     if (n.isNotBlank() && n !in alts) alts.add(n)
                 }
                 // QA: asl AI matn + normalizatsiyadan keyin (raqam so'zga aylanganini hisobga oladi)
-                result.add(TranslationUnit(u.id, u.start, u.end, u.text, uz, u.language, qa != null, alts, qa))
+                result.add(TranslationUnit(u.id, u.start, u.end, u.text, uz, u.language, qa != null, alts, qa, autoRoles[u.id] ?: ""))
             } else {
                 failed++
                 if (firstError == null) firstError = "AI javob bermadi"
-                result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true, emptyList(), "AI javob bermadi"))
+                result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true, emptyList(), "AI javob bermadi", autoRoles[u.id] ?: ""))
             }
         }
 
@@ -522,10 +535,11 @@ class DubbingPipeline {
         )
         val u = units[index]
         val norm = TextNormalizer.fromAssets(context.applicationContext)
+        val cps = uz.dublaj.tts.VoiceCalibration.charsPerSec(context, ensure(context), config)
         val gem = config.newTranslator()
         val slot = (u.end - u.start).coerceAtLeast(0.5)
         val item = GeminiTranslator.Item(
-            u.id, u.text, (slot * GeminiTranslator.CHARS_PER_SEC).toInt().coerceAtLeast(20)
+            u.id, u.text, (slot * cps).toInt().coerceAtLeast(20)
         )
         val ctxPairs = ArrayList<Pair<String, String>>()
         for (k in maxOf(0, index - 3) until index) {

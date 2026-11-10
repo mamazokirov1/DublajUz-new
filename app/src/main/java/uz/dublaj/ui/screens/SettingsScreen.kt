@@ -711,6 +711,31 @@ fun SettingsScreen(
                     config.voicePitch, -4f..4f, steps = 15
                 ) { vm.setConfig(config.copy(voicePitch = it)) }
 
+                SwitchRow(
+                    "Erkak/ayol ovozini avtomatik ajratish",
+                    "Asl nutqdagi ovoz balandligidan gapirayotgan jinsi aniqlanadi va dublyaj tembri shunga moslanadi. Videoni qayta aniqlaganda ishlaydi.",
+                    config.autoVoiceRole
+                ) { vm.setConfig(config.copy(autoVoiceRole = it)) }
+                if (config.autoVoiceRole) {
+                    Text("Dublyaj ovozi (modelning o'zi)", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(
+                            selected = !config.baseVoiceFemale,
+                            onClick = { vm.setConfig(config.copy(baseVoiceFemale = false)) },
+                            label = { Text("Erkak ovozi") }
+                        )
+                        FilterChip(
+                            selected = config.baseVoiceFemale,
+                            onClick = { vm.setConfig(config.copy(baseVoiceFemale = true)) },
+                            label = { Text("Ayol ovozi") }
+                        )
+                    }
+                    Text(
+                        "\"Tinglab ko'rish\" bilan modelingiz ovozini eshitib, shuni tanlang. Shu jinsdagi gaplar o'zgarmaydi, boshqa jinsdagilar tembri siljiydi.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                }
+
                 if (expert) {
                     HelpSlider(
                         "Intonatsiya (jonlilik)", "%.2f".format(config.voiceNoise),

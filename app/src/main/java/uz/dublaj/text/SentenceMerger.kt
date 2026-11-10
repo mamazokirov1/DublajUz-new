@@ -33,7 +33,8 @@ object SentenceMerger {
             if (c != null && canJoin(c, u, maxUnitSec, maxGapSec, maxChars)) {
                 cur = c.copy(
                     end = maxOf(c.end, u.end),
-                    text = (c.text.trimEnd() + " " + u.text.trimStart()).trim()
+                    text = (c.text.trimEnd() + " " + u.text.trimStart()).trim(),
+                    f0 = if (c.f0 > 0f) c.f0 else u.f0
                 )
             } else {
                 if (c != null) out.add(c)
