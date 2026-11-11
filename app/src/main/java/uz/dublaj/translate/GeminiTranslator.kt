@@ -31,7 +31,7 @@ class GeminiTranslator(
     )
 
     /** [fatal] = true: kalit noto'g'ri / ruxsat yo'q — qayta urinishdan foyda yo'q. */
-    class GeminiException(message: String, val fatal: Boolean) : Exception(message)
+    class GeminiException(message: String, val fatal: Boolean, val code: Int = 0) : Exception(message)
 
     private fun endpoint(): String = when (provider.wire) {
         WireFormat.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent"
@@ -56,7 +56,7 @@ class GeminiTranslator(
             val code = conn.responseCode
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
                 ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
-            if (code !in 200..299) throw GeminiException("HTTP $code ${errorMessage(text)}".trim(), true)
+            if (code !in 200..299) throw GeminiException("HTTP $code ${errorMessage(text)}".trim(), true, code)
             val root = JSONObject(text)
             val out = ArrayList<String>()
             if (provider.wire == WireFormat.GEMINI) {
@@ -342,7 +342,7 @@ class GeminiTranslator(
                 429 -> "limit tugadi, biroz kutish kerak"
                 else -> "server xatosi"
             }
-            throw GeminiException("HTTP $code — $hint${if (msg.isNotEmpty()) ": $msg" else ""}", fatal)
+            throw GeminiException("HTTP $code — $hint${if (msg.isNotEmpty()) ": $msg" else ""}", fatal, code)
         } catch (e: GeminiException) {
             throw e
         } catch (e: java.io.IOException) {

@@ -204,7 +204,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                 FilledTonalIconButton(onClick = { onPlay(file) }) {
                     Icon(Icons.Default.PlayArrow, contentDescription = "Ko'rish")
                 }
-                IconButton(onClick = { context.startActivity(OutputUtils.shareIntent(context, file)) }) {
+                IconButton(onClick = { uz.dublaj.util.safeStart(context, OutputUtils.shareIntent(context, file)) }) {
                     Icon(Icons.Default.Share, contentDescription = "Ulashish")
                 }
                 Box {
@@ -219,7 +219,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                                 scope.launch {
                                     try {
                                         val m4a = withContext(Dispatchers.IO) { ExportUtils.ensureM4a(file) }
-                                        context.startActivity(ExportUtils.shareIntent(context, m4a, "audio/mp4", "Audio ulashish"))
+                                        uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, m4a, "audio/mp4", "Audio ulashish"))
                                         onChanged()
                                     } catch (e: Exception) {
                                         toast("Audio ajratilmadi: ${e.message}")
@@ -233,7 +233,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                                 leadingIcon = { Icon(Icons.Default.Subtitles, null) },
                                 onClick = {
                                     menu = false
-                                    context.startActivity(
+                                    uz.dublaj.util.safeStart(context, 
                                         ExportUtils.shareIntent(context, ExportUtils.srtFile(file, true), "application/x-subrip", "Subtitr ulashish")
                                     )
                                 }
@@ -244,7 +244,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                                     leadingIcon = { Icon(Icons.Default.Subtitles, null) },
                                     onClick = {
                                         menu = false
-                                        context.startActivity(
+                                        uz.dublaj.util.safeStart(context, 
                                             ExportUtils.shareIntent(context, ExportUtils.srtFile(file, false), "application/x-subrip", "Subtitr ulashish")
                                         )
                                     }

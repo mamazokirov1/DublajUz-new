@@ -19,6 +19,8 @@ class WorkDir(context: Context) {
 
     val transcriptJson get() = File(temp, "transcript.json")
     val translationJson get() = File(temp, "translation.json")
+    /** Tarjimaning tayyor qismi (to'xtab qolsa davom ettirish uchun). */
+    val translatePartial get() = File(temp, "translate_partial.json")
     val approvedFlag get() = File(temp, "approved.flag")
     val extractedWav get() = File(temp, "extracted.wav")      // 16 kHz — Whisper uchun
     val mixWav get() = File(temp, "original_mix.wav")         // 22.05 kHz — aralashtirish uchun

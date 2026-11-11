@@ -30,6 +30,9 @@ import uz.dublaj.data.ModelsInfo
 import uz.dublaj.data.PipelineState
 import uz.dublaj.data.TranslationUnit
 import uz.dublaj.data.UserCancelled
+import uz.dublaj.data.TranslateDecision
+import uz.dublaj.data.TranslatePause
+import uz.dublaj.data.TranslationPaused
 import uz.dublaj.pipeline.DubbingPipeline
 import uz.dublaj.service.PipelineService
 import uz.dublaj.util.FileUtils
@@ -225,7 +228,11 @@ class PipelineViewModel : ViewModel() {
             _hasTranscript.value = r.hasTranscript
             _translationUnits.value = r.units
             _approved.value = r.approved
+            val partial = withContext(Dispatchers.IO) { pipeline.translatePartialInfo(app) }
+            _translateResume.value = if (r.units.isEmpty()) partial?.let { "${it.first}/${it.second}" } else null
         }
+        // Bildirishnomadagi «Bekor qilish» tugmasi
+        PipelineService.onCancelRequested = { cancel() }
         viewModelScope.launch {
             _models.value = withContext(Dispatchers.IO) { pipeline.modelsInfo(app, _config.value) }
         }
@@ -311,6 +318,8 @@ class PipelineViewModel : ViewModel() {
     }
 
     override fun onCleared() {
+        pauseWait?.complete(TranslateDecision.Stop)
+        PipelineService.onCancelRequested = null
         BillingManager.removeProListener(proListener)
         releasePreview()
         super.onCleared()
@@ -365,6 +374,7 @@ class PipelineViewModel : ViewModel() {
             return
         }
         pipeline.cancel()
+        pauseWait?.complete(TranslateDecision.Stop)
         _cancelling.value = true
         _state.update { if (it is PipelineState.Running) it.copy(message = "Bekor qilinmoqda…") else it }
         if (_modelStatus.value != null) _modelStatus.value = "Bekor qilinmoqda…"
@@ -389,19 +399,66 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
-    fun translate(context: Context) {
+    fun translate(context: Context, resume: Boolean = false) {
         launchTask(context, "Tarjima") {
             val cfg = _config.value
+            val app = context.applicationContext
             val units = withContext(Dispatchers.IO) {
-                pipeline.translate(context.applicationContext, cfg) { p, m ->
+                pipeline.translate(app, cfg, resume, { m, d, t -> askTranslateDecision(app, m, d, t) }) { p, m ->
                     _state.value = PipelineState.Running("Tarjima", p, m)
                 }
             }
             _translationUnits.value = units
             _approved.value = false
+            _translateResume.value = null
             _state.value = PipelineState.Idle
         }
     }
+
+    // ------------------------------------------------------------------ tarjima to'xtab qolsa: kalit almashtirish / davom etish
+
+    private val _translatePause = MutableStateFlow<TranslatePause?>(null)
+    /** Tarjima kalit/limit/internet muammosi tufayli kutayotganda to'ladi (dialog ko'rsatiladi). */
+    val translatePause: StateFlow<TranslatePause?> = _translatePause.asStateFlow()
+    private val _translateResume = MutableStateFlow<String?>(null)
+    /** To'xtatilgan tarjimaning tayyor qismi, masalan "40/120"; yo'q bo'lsa null. */
+    val translateResume: StateFlow<String?> = _translateResume.asStateFlow()
+    private var pauseWait: kotlinx.coroutines.CompletableDeferred<TranslateDecision>? = null
+
+    /** IO oqimida chaqiriladi: foydalanuvchi qaror qilguncha kutadi (jarayon yo'qolmaydi). */
+    private fun askTranslateDecision(app: Context, message: String, done: Int, total: Int): TranslateDecision {
+        val wait = kotlinx.coroutines.CompletableDeferred<TranslateDecision>()
+        pauseWait = wait
+        _translatePause.value = TranslatePause(message, done, total)
+        PipelineService.notifyDone(app, "Tarjima to'xtab qoldi", "$done/$total gap tayyor. Kalitni almashtiring yoki qayta urining.")
+        val decision = try {
+            kotlinx.coroutines.runBlocking { wait.await() }
+        } catch (e: Exception) {
+            TranslateDecision.Stop
+        }
+        _translatePause.value = null
+        pauseWait = null
+        return decision
+    }
+
+    /** Yangi kalit (bo'sh bo'lsa — eskisi) bilan aynan to'xtagan joydan davom etish. */
+    fun continueTranslation(newKey: String?) {
+        val wait = pauseWait ?: return
+        var cfg = _config.value
+        val key = newKey?.trim().orEmpty()
+        if (key.isNotEmpty()) {
+            cfg = if (cfg.provider() == uz.dublaj.translate.AiProvider.GEMINI) cfg.copy(geminiKey = key)
+            else cfg.copy(aiKeys = cfg.aiKeys + (cfg.aiProvider to key))
+            setConfig(cfg)
+        }
+        wait.complete(TranslateDecision.Retry(cfg))
+    }
+
+    /** Qolgan gaplarni tarjimasiz qoldirib, jarayonni yakunlash. */
+    fun skipRestOfTranslation() { pauseWait?.complete(TranslateDecision.Skip) }
+
+    /** Hozircha to'xtatish: tayyor qismi saqlanadi, keyin «Davom etish» bilan davom ettiriladi. */
+    fun pauseTranslation() { pauseWait?.complete(TranslateDecision.Stop) }
 
     fun updateUzText(index: Int, newText: String) {
         val list = _translationUnits.value.toMutableList()
@@ -447,6 +504,37 @@ class PipelineViewModel : ViewModel() {
     fun clearAllRoles() {
         _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = "") }
         _approved.value = false
+    }
+
+    /** Hamma gaplarni bitta ovozga o'tkazish: "erkak" | "ayol" | "bola" | "" (ONNX ning asl ovozi). */
+    fun setAllRoles(role: String) {
+        if (_translationUnits.value.isEmpty()) return
+        _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = role) }
+        _approved.value = false
+        toast(
+            when (role) {
+                "erkak" -> "Hamma gap erkak ovoziga o'tkazildi"
+                "ayol" -> "Hamma gap ayol ovoziga o'tkazildi"
+                "bola" -> "Hamma gap bola ovoziga o'tkazildi"
+                else -> "Hamma gap ONNX ning asl ovoziga qaytarildi"
+            }
+        )
+    }
+
+    /** Asl nutq ton balandligidan aniqlangan erkak/ayol belgilarini qayta qo'yadi. */
+    fun restoreAutoRoles(context: Context) {
+        val app = context.applicationContext
+        if (_translationUnits.value.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val map = withContext(Dispatchers.IO) { pipeline.autoRolesFor(app, _config.value) }
+                _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = map[it.id] ?: "") }
+                _approved.value = false
+                toast("Avtomatik aniqlangan ovozlar qaytarildi")
+            } catch (e: Exception) {
+                toast("Avtomatik aniqlab bo'lmadi: ${e.message ?: "matn ma'lumoti yo'q"}")
+            }
+        }
     }
 
     fun setUserVoice(index: Int, has: Boolean) {
@@ -638,12 +726,13 @@ class PipelineViewModel : ViewModel() {
             }
             _hasTranscript.value = true
             val units = withContext(Dispatchers.IO) {
-                pipeline.translate(app, cfg) { p, m ->
+                pipeline.translate(app, cfg, false, { m, d, t -> askTranslateDecision(app, m, d, t) }) { p, m ->
                     _state.value = PipelineState.Running("Tarjima", 0.5f + p * 0.5f, m)
                 }
             }
             _translationUnits.value = units
             _approved.value = false
+            _translateResume.value = null
             _state.value = PipelineState.Idle
             _plainOriginal.value = withContext(Dispatchers.IO) { pipeline.plainTranscript(app) }
             toast("Matn va tarjima tayyor ✓")
@@ -837,6 +926,10 @@ class PipelineViewModel : ViewModel() {
             } catch (e: UserCancelled) {
                 _state.value = PipelineState.Idle
                 toast("Bekor qilindi ✓")
+            } catch (e: TranslationPaused) {
+                _state.value = PipelineState.Idle
+                _translateResume.value = "${e.done}/${e.total}"
+                toast("Tarjima to'xtatildi (${e.done}/${e.total}). Keyinroq «Davom etish» ni bosing.")
             } catch (e: OutOfMemoryError) {
                 Timber.e(e, "OOM")
                 _state.value = PipelineState.Error("Xotira yetmadi. Kichikroq video tanlang yoki Sozlamalarda matn aniqlashni \"Tez\" rejimga o'tkazing.")
@@ -1049,7 +1142,20 @@ class PipelineViewModel : ViewModel() {
                                 updateItem(item.id) { it.copy(progress = 0.5f + p * 0.5f, message = m) }
                             }.also { autoSave(app, it, cfg) }
                         }
-                        if (!cfg.isPro) UsageStore.recordDub(app, 60.0)
+                        if (!cfg.isPro) {
+                            val durSec = withContext(Dispatchers.IO) {
+                                try {
+                                    val r = android.media.MediaMetadataRetriever()
+                                    try {
+                                        r.setDataSource(out.absolutePath)
+                                        (r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 60_000L) / 1000.0
+                                    } finally {
+                                        try { r.release() } catch (_: Exception) {}
+                                    }
+                                } catch (e: Exception) { 60.0 }
+                            }
+                            UsageStore.recordDub(app, durSec)
+                        }
                         updateItem(item.id) {
                             it.copy(
                                 status = QueueStatus.DONE, progress = 1f, outputPath = out.absolutePath,

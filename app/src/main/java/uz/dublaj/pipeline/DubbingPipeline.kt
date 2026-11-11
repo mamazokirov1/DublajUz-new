@@ -214,6 +214,7 @@ class DubbingPipeline {
 
         // Eski natijalar yaroqsiz
         dir.translationJson.delete()
+        dir.translatePartial.delete()
         dir.approvedFlag.delete()
         dir.mixWav.delete()
 
@@ -352,9 +353,15 @@ class DubbingPipeline {
 
     // ------------------------------------------------------------------ 2) tarjima (faqat Gemini — NLLB (CC-BY-NC) tufayli olib tashlandi)
 
+    /**
+     * [resume] = true: oldingi to'xtab qolgan tarjimaning tayyor qismi o'tkazib yuboriladi.
+     * [onProblem]: kalit/limit/internet xatosida chaqiriladi (bloklaydi) va foydalanuvchi qarorini qaytaradi.
+     */
     fun translate(
         context: Context,
         config: AppConfig,
+        resume: Boolean = false,
+        onProblem: ((String, Int, Int) -> uz.dublaj.data.TranslateDecision)? = null,
         onProgress: (Float, String) -> Unit
     ): List<TranslationUnit> {
         val progress = wrap(onProgress)
@@ -381,8 +388,15 @@ class DubbingPipeline {
         var firstError: String? = null
 
         progress(0.02f, "${config.provider().label} bilan tarjima…")
-        val gem = config.newTranslator()
+        var cfgNow = config
+        var gem = cfgNow.newTranslator()
         val online = HashMap<Int, GeminiTranslator.Result>()
+        val sig = translateSig(src)
+        if (resume) {
+            online.putAll(loadPartial(dir, sig))
+            if (online.isNotEmpty()) Timber.i("Tarjima davom ettirilmoqda: ${online.size}/${src.size} gap tayyor")
+        }
+        var skipRest = false
         var onlineNote: String? = null
         var idx = 0
         try {
@@ -396,12 +410,17 @@ class DubbingPipeline {
                     chunk.add(u)
                     chars += u.text.length
                 }
-                progress(0.05f + 0.85f * idx / src.size, "${config.provider().label} ${idx + 1}–${idx + chunk.size}/${src.size}")
                 val items = chunk.mapIndexed { k, u ->
                     val nextStart = src.getOrNull(idx + k + 1)?.start
                     val slot = maxOf(u.end - u.start, (nextStart ?: (u.end + 1.5)) - u.start)
                     GeminiTranslator.Item(u.id, u.text, (slot * cps).toInt().coerceAtLeast(20))
+                }.filter { it.id !in online }
+                // Tayyor bo'lgan (davom ettirilayotgan) yoki o'tkazib yuboriladigan bo'laklar
+                if (items.isEmpty() || skipRest) {
+                    idx += chunk.size
+                    continue
                 }
+                progress(0.05f + 0.85f * idx / src.size, "${cfgNow.provider().label} ${idx + 1}–${idx + chunk.size}/${src.size}")
                 // oldingi 3 gapning tarjimasi — kontekst sifatida; keyingi gap — maslahat
                 val ctxPairs = ArrayList<Pair<String, String>>()
                 for (k in maxOf(0, idx - 3) until idx) {
@@ -410,22 +429,50 @@ class DubbingPipeline {
                 }
                 val srcLang = chunk.firstOrNull()?.language ?: "en"
                 val nextHint = src.getOrNull(idx + chunk.size)?.text
-                val got: Map<Int, GeminiTranslator.Result> = try {
-                    gem.translateChunk(
-                        srcLang,
-                        ctxPairs,
-                        items,
-                        nextHint,
-                        GeminiTranslator.Style(config.videoContext, config.addressForm, config.tone, config.glossary, config.aiExtraPrompt, config.aiTemperature)
-                    )
-                } catch (e: GeminiTranslator.GeminiException) {
-                    Timber.w(e, "Gemini chunk xato")
-                    if (firstError == null) firstError = e.message
-                    emptyMap()
+                var got: Map<Int, GeminiTranslator.Result>? = null
+                while (got == null) {
+                    checkCancelled()
+                    try {
+                        got = gem.translateChunk(
+                            srcLang,
+                            ctxPairs,
+                            items,
+                            nextHint,
+                            GeminiTranslator.Style(cfgNow.videoContext, cfgNow.addressForm, cfgNow.tone, cfgNow.glossary, cfgNow.aiExtraPrompt, cfgNow.aiTemperature)
+                        )
+                    } catch (e: GeminiTranslator.GeminiException) {
+                        Timber.w(e, "Gemini chunk xato")
+                        if (firstError == null) firstError = e.message
+                        // Kalit/limit/hisob/internet muammosi: jarayonni yo'qotmasdan foydalanuvchidan so'raymiz
+                        val pausable = e.code != 0 || (e.message ?: "").startsWith("Internet")
+                        if (onProblem != null && pausable) {
+                            savePartial(dir, sig, online)
+                            when (val d = onProblem(e.message ?: "Noma'lum xato", online.size, src.size)) {
+                                is uz.dublaj.data.TranslateDecision.Retry -> {
+                                    cfgNow = d.config
+                                    gem = cfgNow.newTranslator()
+                                    firstError = null
+                                }
+                                is uz.dublaj.data.TranslateDecision.Skip -> {
+                                    skipRest = true
+                                    got = emptyMap()
+                                }
+                                is uz.dublaj.data.TranslateDecision.Stop -> {
+                                    checkCancelled()
+                                    throw uz.dublaj.data.TranslationPaused(online.size, src.size, e.message ?: "")
+                                }
+                            }
+                        } else {
+                            got = emptyMap()
+                        }
+                    }
                 }
-                online.putAll(got)
+                online.putAll(got ?: emptyMap())
+                savePartial(dir, sig, online)
                 idx += chunk.size
             }
+        } catch (e: uz.dublaj.data.TranslationPaused) {
+            throw e
         } catch (e: UserCancelled) {
             throw e
         } catch (e: Exception) {
@@ -467,11 +514,70 @@ class DubbingPipeline {
 
         dir.approvedFlag.delete()
         saveTranslation(context, result)
+        dir.translatePartial.delete()
         val done = "Tarjima tayyor (${config.provider().label}: ${online.size}/${src.size})"
         progress(1f, if (failed + flagged > 0) "Tayyor (${failed + flagged} ta gap tekshirilsin)" else done)
         return result
     }
 
+
+    // ------------------------------------------------------------------ to'xtab qolgan tarjimani davom ettirish
+
+    private fun translateSig(src: List<TranscriptUnit>): String =
+        "${src.size}:${src.joinToString("|") { it.text }.hashCode()}"
+
+    private fun savePartial(dir: WorkDir, sig: String, online: Map<Int, GeminiTranslator.Result>) {
+        try {
+            val arr = JSONArray()
+            for ((id, r) in online) {
+                arr.put(JSONObject().apply {
+                    put("id", id); put("uz", r.uz)
+                    if (r.short != null) put("short", r.short)
+                })
+            }
+            dir.translatePartial.writeText(JSONObject().put("sig", sig).put("items", arr).toString())
+        } catch (e: Exception) {
+            Timber.w(e, "Tarjima qismi saqlanmadi")
+        }
+    }
+
+    private fun loadPartial(dir: WorkDir, sig: String): Map<Int, GeminiTranslator.Result> {
+        val f = dir.translatePartial
+        if (!f.isFile) return emptyMap()
+        return try {
+            val j = JSONObject(f.readText())
+            if (j.optString("sig") != sig) return emptyMap()
+            val arr = j.getJSONArray("items")
+            val out = HashMap<Int, GeminiTranslator.Result>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val uz = o.optString("uz", "")
+                if (uz.isBlank()) continue
+                out[o.getInt("id")] = GeminiTranslator.Result(uz, o.optString("short", "").ifEmpty { null })
+            }
+            out
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    /** To'xtab qolgan tarjima bo'lsa (tayyor, jami) gap soni; yo'q bo'lsa null. */
+    fun translatePartialInfo(context: Context): Pair<Int, Int>? {
+        return try {
+            val dir = ensure(context)
+            val src = SentenceMerger.merge(loadTranscript(context))
+            val done = loadPartial(dir, translateSig(src)).size
+            if (done > 0 && done < src.size) done to src.size else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Asl nutq ton balandligidan avtomatik aniqlangan erkak/ayol izohlari (id → rol). */
+    fun autoRolesFor(context: Context, config: AppConfig): Map<Int, String> {
+        val src = SentenceMerger.merge(loadTranscript(context))
+        return uz.dublaj.text.VoiceRoles.assign(src, config.baseVoiceFemale)
+    }
 
     fun saveTranslation(context: Context, units: List<TranslationUnit>) {
         val dir = ensure(context)

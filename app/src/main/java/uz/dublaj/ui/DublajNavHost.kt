@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import uz.dublaj.ui.theme.findActivity
+import uz.dublaj.translate.provider
 import androidx.compose.ui.Modifier
 import uz.dublaj.monetization.AdsManager
 import uz.dublaj.monetization.BannerAd
@@ -88,6 +89,19 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
             },
             onToast = { vm.toast(it) },
             onDismiss = { prompt = null }
+        )
+    }
+    // Tarjima kalit/limit/internet xatosi tufayli to'xtaganda: kalitni almashtirish yoki davom etish
+    val translatePause by vm.translatePause.collectAsState()
+    translatePause?.let { tp ->
+        val prov = config.provider()
+        uz.dublaj.ui.components.TranslatePauseDialog(
+            info = tp,
+            providerLabel = prov.label,
+            keyUrl = prov.keyUrl,
+            onContinue = { key -> vm.continueTranslation(key) },
+            onSkipRest = { vm.skipRestOfTranslation() },
+            onPause = { vm.pauseTranslation() }
         )
     }
     // Restore tugagach to'g'ri ekranga o'tkazish (hot restart / qayta ochish)

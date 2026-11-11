@@ -354,7 +354,7 @@ private fun TextBlock(title: String, text: String, fileBase: String, onSpeak: ((
                             val dir = WorkDir(context.applicationContext).output.apply { mkdirs() }
                             val f = File(dir, "${fileBase}_${System.currentTimeMillis()}.txt")
                             f.writeText(text)
-                            context.startActivity(ExportUtils.shareIntent(context, f, "text/plain", "Matnni saqlash/ulashish"))
+                            uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, f, "text/plain", "Matnni saqlash/ulashish"))
                         } catch (e: Exception) {
                             Toast.makeText(context, "Fayl yozilmadi: ${e.message}", Toast.LENGTH_LONG).show()
                         }
@@ -371,7 +371,7 @@ private fun TextBlock(title: String, text: String, fileBase: String, onSpeak: ((
                             type = "text/plain"
                             putExtra(Intent.EXTRA_TEXT, text)
                         }
-                        context.startActivity(Intent.createChooser(send, "Ulashish"))
+                        uz.dublaj.util.safeStart(context, Intent.createChooser(send, "Ulashish"))
                     },
                     contentPadding = PaddingValues(horizontal = 12.dp)
                 ) {
@@ -450,7 +450,7 @@ private fun AudioCard(file: File, vm: PipelineViewModel) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(
-                    onClick = { context.startActivity(ExportUtils.shareIntent(context, file, "audio/wav", "Audio ulashish")) },
+                    onClick = { uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, file, "audio/wav", "Audio ulashish")) },
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))

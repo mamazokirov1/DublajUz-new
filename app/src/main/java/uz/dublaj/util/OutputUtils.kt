@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.File
+import android.widget.Toast
 
 object OutputUtils {
 
@@ -79,4 +80,13 @@ object OutputUtils {
             setDataAndType(fileUri(context, file), "video/mp4")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+}
+
+/** Mos ilova topilmasa (yoki xato bo'lsa) ilova yopilib qolmasligi uchun xavfsiz ochish. */
+fun safeStart(context: Context, intent: Intent) {
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(context, "Buni ochadigan ilova topilmadi", Toast.LENGTH_SHORT).show()
+    }
 }

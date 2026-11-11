@@ -30,6 +30,11 @@ class PipelineService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Bildirishnomadagi «Bekor qilish» tugmasi
+        if (intent?.action == ACTION_CANCEL) {
+            onCancelRequested?.invoke()
+            return START_NOT_STICKY
+        }
         createChannel()
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Dublyaj ishlamoqda…"
         val progress = intent?.getIntExtra(EXTRA_PROGRESS, -1) ?: -1
@@ -61,6 +66,7 @@ class PipelineService : Service() {
     /** Android 15+: tizim foreground-servis vaqt limitiga yetganda chaqiriladi — servisni to'xtatamiz. */
     override fun onTimeout(startId: Int, fgsType: Int) {
         Timber.w("Foreground servis vaqt limiti (type=$fgsType)")
+        notifyDone(this, "DublajUz", "Tizim fonda ishlash vaqtini tugatdi. Ilovani oching va jarayonni davom ettiring.")
         stopSelf()
     }
 
@@ -98,6 +104,7 @@ class PipelineService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .addAction(cancelAction(this))
             .setContentIntent(open)
         if (progress in 0..100) b.setProgress(100, progress, false) else b.setProgress(0, 0, true)
         return b.build()
@@ -109,6 +116,20 @@ class PipelineService : Service() {
         private const val EXTRA_TEXT = "text"
         private const val EXTRA_DATA_SYNC = "data_sync"
         private const val EXTRA_PROGRESS = "progress"
+        private const val ACTION_CANCEL = "uz.dublaj.action.CANCEL"
+
+        /** Bildirishnomadagi «Bekor qilish» bosilganda ViewModel shuni chaqiradi. */
+        @Volatile
+        var onCancelRequested: (() -> Unit)? = null
+
+        private fun cancelAction(context: Context): NotificationCompat.Action {
+            val pi = PendingIntent.getService(
+                context, 2,
+                Intent(context, PipelineService::class.java).setAction(ACTION_CANCEL),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            return NotificationCompat.Action.Builder(0, "Bekor qilish", pi).build()
+        }
 
         /**
          * Bildirishnomadan ilovani ochish: mavjud oynani oldinga olib chiqadi
@@ -138,6 +159,7 @@ class PipelineService : Service() {
                     .setCategory(NotificationCompat.CATEGORY_PROGRESS)
                     .setOngoing(true)
                     .setOnlyAlertOnce(true)
+                    .addAction(cancelAction(context))
                     .setContentIntent(open)
                 if (progressPercent in 0..100) b.setProgress(100, progressPercent, false) else b.setProgress(0, 0, true)
                 nm.notify(NOTIF_ID, b.build())

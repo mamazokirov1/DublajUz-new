@@ -112,7 +112,7 @@ fun EditTranslationScreen(
                                 onClick = {
                                     menu = false
                                     val f = SrtExporter.tempFile(context, units, true)
-                                    context.startActivity(
+                                    uz.dublaj.util.safeStart(context, 
                                         ExportUtils.shareIntent(context, f, "application/x-subrip", "Subtitr")
                                     )
                                 }
@@ -122,7 +122,7 @@ fun EditTranslationScreen(
                                 onClick = {
                                     menu = false
                                     val f = SrtExporter.tempFile(context, units, false)
-                                    context.startActivity(
+                                    uz.dublaj.util.safeStart(context, 
                                         ExportUtils.shareIntent(context, f, "application/x-subrip", "Subtitr")
                                     )
                                 }
@@ -176,6 +176,30 @@ fun EditTranslationScreen(
                     } else {
                         TextButton(onClick = { seqMode = false; seqIndex = -1 }) { Text("To'xtat") }
                     }
+                }
+
+                // Hamma gaplar uchun ovozni birdan o'zgartirish
+                Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    Text(
+                        "Hamma gaplar uchun ovoz",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = cs.onSurfaceVariant
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                    ) {
+                        AssistChip(onClick = { vm.setAllRoles("erkak") }, enabled = !busy, label = { Text("Hammasi erkak") })
+                        AssistChip(onClick = { vm.setAllRoles("ayol") }, enabled = !busy, label = { Text("Hammasi ayol") })
+                        AssistChip(onClick = { vm.setAllRoles("bola") }, enabled = !busy, label = { Text("Hammasi bola") })
+                        AssistChip(onClick = { vm.restoreAutoRoles(context) }, enabled = !busy, label = { Text("Avtomatik aniqlangan") })
+                        AssistChip(onClick = { vm.setAllRoles("") }, enabled = !busy, label = { Text("Hammasi asl (—)") })
+                    }
+                    Text(
+                        "«—» = ONNX ovozining o'z tembri (o'zgartirilmaydi). Har bir gapni alohida ham sozlash mumkin.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant
+                    )
                 }
 
                 Text(

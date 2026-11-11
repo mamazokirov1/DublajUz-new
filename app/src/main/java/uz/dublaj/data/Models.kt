@@ -174,6 +174,22 @@ sealed class PipelineState {
     data class Error(val message: String) : PipelineState()
 }
 
+/** Tarjima paytida kalit/limit/internet muammosi chiqqanda foydalanuvchi qarori. */
+sealed class TranslateDecision {
+    /** Shu yerdan davom etish (kalit almashtirilgan bo'lishi mumkin). */
+    data class Retry(val config: AppConfig) : TranslateDecision()
+    /** Qolgan gaplarni tarjimasiz qoldirish (keyin qo'lda tuzatiladi). */
+    data object Skip : TranslateDecision()
+    /** To'xtatib turish: tayyor qismi saqlanadi, keyin davom etish mumkin. */
+    data object Stop : TranslateDecision()
+}
+
+/** Tarjima to'xtatib qo'yildi; [done]/[total] gap tayyor va saqlangan. */
+class TranslationPaused(val done: Int, val total: Int, message: String) : RuntimeException(message)
+
+/** Dialogda ko'rsatiladigan to'xtash ma'lumoti. */
+data class TranslatePause(val message: String, val done: Int, val total: Int)
+
 /** Foydalanuvchi "Bekor qilish" bosganda tashlanadi. */
 class UserCancelled : RuntimeException("Bekor qilindi")
 

@@ -150,7 +150,7 @@ fun HomeScreen(
                 TextButton(onClick = {
                     showNotifInfo = false
                     try {
-                        context.startActivity(
+                        uz.dublaj.util.safeStart(context, 
                             Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                                 .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -446,6 +446,27 @@ fun HomeScreen(
                         enabled = videoUri != null && !running && models.whisper && translateOk,
                         onClick = { vm.transcribeAndTranslate(context) }
                     )
+                    val resumeInfo by vm.translateResume.collectAsState()
+                    resumeInfo?.let { info ->
+                        FilledTonalButton(
+                            onClick = { vm.translate(context, resume = true) },
+                            enabled = hasTranscript && !running && translateOk,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                            shape = MaterialTheme.shapes.medium
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Tarjimani davom ettirish ($info tayyor)",
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
+                        Text(
+                            "Kalit limiti tugagan bo'lsa, avval Sozlamalarda yangi kalit kiriting yoki limit ochilishini kuting. Tayyor gaplar qaytadan tarjima qilinmaydi.",
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                        )
+                    }
                     if (!models.whisper || !translateOk) {
                         Text(
                             "Avval Sozlamalardan matn aniqlash va tarjima komponentlarini yuklab oling (yoki onlayn tarjimani yoqing).",
@@ -624,7 +645,7 @@ private fun RecentCard(entry: HistoryEntry) {
     val info by rememberVideoInfo(file = entry.video)
     Card(
         modifier = Modifier.width(160.dp).clickable {
-            try { context.startActivity(OutputUtils.viewIntent(context, entry.video)) }
+            try { uz.dublaj.util.safeStart(context, OutputUtils.viewIntent(context, entry.video)) }
             catch (e: Exception) { Toast.makeText(context, "Video ochuvchi ilova topilmadi", Toast.LENGTH_SHORT).show() }
         },
         shape = MaterialTheme.shapes.medium,
@@ -766,7 +787,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(
-                    onClick = { context.startActivity(OutputUtils.shareIntent(context, file)) },
+                    onClick = { uz.dublaj.util.safeStart(context, OutputUtils.shareIntent(context, file)) },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
                     modifier = Modifier.weight(1f)
                 ) {
@@ -797,7 +818,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                         scope.launch {
                             try {
                                 val m4a = withContext(Dispatchers.IO) { ExportUtils.ensureM4a(file) }
-                                context.startActivity(ExportUtils.shareIntent(context, m4a, "audio/mp4", "Audio ulashish"))
+                                uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, m4a, "audio/mp4", "Audio ulashish"))
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Audio ajratilmadi: ${e.message}", Toast.LENGTH_LONG).show()
                             }
@@ -813,7 +834,7 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                 FilledTonalButton(
                     onClick = {
                         val srt = ExportUtils.srtFile(file, true)
-                        if (srt.isFile) context.startActivity(ExportUtils.shareIntent(context, srt, "application/x-subrip", "Subtitr ulashish"))
+                        if (srt.isFile) uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, srt, "application/x-subrip", "Subtitr ulashish"))
                         else Toast.makeText(context, "Subtitr topilmadi", Toast.LENGTH_SHORT).show()
                     },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),

@@ -183,7 +183,7 @@ private fun QueueRow(item: QueueItem, onRemove: () -> Unit) {
             }
             if (item.status == QueueStatus.DONE && item.outputPath != null) {
                 TextButton(onClick = {
-                    try { context.startActivity(OutputUtils.viewIntent(context, File(item.outputPath))) }
+                    try { uz.dublaj.util.safeStart(context, OutputUtils.viewIntent(context, File(item.outputPath))) }
                     catch (e: Exception) { Toast.makeText(context, "Video ochuvchi ilova topilmadi", Toast.LENGTH_SHORT).show() }
                 }) {
                     Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(18.dp))
