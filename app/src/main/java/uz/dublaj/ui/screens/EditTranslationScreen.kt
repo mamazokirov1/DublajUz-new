@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
@@ -21,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -60,6 +63,27 @@ fun EditTranslationScreen(
     var seqIndex by remember { mutableIntStateOf(-1) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp
+    // Past (yoki gorizontal) ekranda video avtomatik yashirin: tahrirlash uchun joy qolsin
+    var showVideo by remember { mutableStateOf(screenHeightDp >= 600) }
+    var showInfo by remember { mutableStateOf(false) }
+
+    if (showInfo) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            title = { Text("Qanday ishlaydi") },
+            text = {
+                Text(
+                    "• Vaqtni bosing — video shu joyga o'tadi.\n" +
+                        "• Mikrofon — o'z ovozingiz bilan yozish.\n" +
+                        "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
+                        "• Ovoz belgisi «—» — ONNX ovozining o'z tembri (o'zgartirilmaydi).\n" +
+                        "• ⋮ menyusidan hamma gaplar ovozini (erkak / ayol / bola / avtomatik / asl) birdan o'zgartirish mumkin."
+                )
+            },
+            confirmButton = { TextButton(onClick = { showInfo = false }) { Text("Tushunarli") } }
+        )
+    }
 
     val filtered = remember(units, onlyProblems, onlyNoVoice) {
         units.mapIndexed { i, u -> i to u }.filter { (_, u) ->
@@ -97,22 +121,58 @@ fun EditTranslationScreen(
                     }
                 },
                 actions = {
-                    FilledTonalButton(onClick = { vm.saveTranslations(context) }, enabled = !busy) {
-                        Icon(Icons.Default.Save, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Saqlash")
+                    IconButton(onClick = { vm.saveTranslations(context) }, enabled = !busy) {
+                        Icon(Icons.Default.Save, contentDescription = "Saqlash")
                     }
                     Box {
                         IconButton(onClick = { menu = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menyu")
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            Text(
+                                "Hamma gaplar uchun ovoz",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = cs.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Hammasi erkak") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.setAllRoles("erkak") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Hammasi ayol") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.setAllRoles("ayol") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Hammasi bola") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.setAllRoles("bola") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Avtomatik aniqlangan") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.restoreAutoRoles(context) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Hammasi asl ovoz (—)") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.setAllRoles("") }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Spiker± (navbatma-navbat)") },
+                                enabled = !busy,
+                                onClick = { menu = false; vm.autoAssignRoles() }
+                            )
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("SRT (o'zbekcha)") },
                                 onClick = {
                                     menu = false
                                     val f = SrtExporter.tempFile(context, units, true)
-                                    uz.dublaj.util.safeStart(context, 
+                                    uz.dublaj.util.safeStart(
+                                        context,
                                         ExportUtils.shareIntent(context, f, "application/x-subrip", "Subtitr")
                                     )
                                 }
@@ -122,7 +182,8 @@ fun EditTranslationScreen(
                                 onClick = {
                                     menu = false
                                     val f = SrtExporter.tempFile(context, units, false)
-                                    uz.dublaj.util.safeStart(context, 
+                                    uz.dublaj.util.safeStart(
+                                        context,
                                         ExportUtils.shareIntent(context, f, "application/x-subrip", "Subtitr")
                                     )
                                 }
@@ -136,83 +197,75 @@ fun EditTranslationScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             if (!imeVisible) {
-                // Video preview + seek
-                videoUri?.let { uri ->
-                    VideoPlayer(
-                        uri = uri,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        seekMs = seekMs,
-                        seekToken = seekTick,
-                        maxVideoHeight = 220.dp
-                    )
-                }
-
-                // Filters + sequential
-                FlowRow(
+                // Bitta qatorli filtrlar: gorizontal suriladi + video va izoh tugmalari
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                        .padding(start = 16.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = onlyProblems,
-                        onClick = { onlyProblems = !onlyProblems },
-                        label = { Text("⚠ Muammoli") }
-                    )
-                    FilterChip(
-                        selected = onlyNoVoice,
-                        onClick = { onlyNoVoice = !onlyNoVoice },
-                        label = { Text("Ovoz yo'q") }
-                    )
-                    TextButton(onClick = { vm.autoAssignRoles() }) { Text("Spiker±") }
-                    if (!seqMode) {
-                        TextButton(onClick = {
-                            seqMode = true
-                            seqIndex = units.indexOfFirst { !it.hasUserVoice }.takeIf { it >= 0 } ?: 0
-                        }) { Text("Ketma-ket") }
-                    } else {
-                        TextButton(onClick = { seqMode = false; seqIndex = -1 }) { Text("To'xtat") }
-                    }
-                }
-
-                // Hamma gaplar uchun ovozni birdan o'zgartirish
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
-                    Text(
-                        "Hamma gaplar uchun ovoz",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = cs.onSurfaceVariant
-                    )
-                    FlowRow(
+                    Row(
+                        Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(0.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AssistChip(onClick = { vm.setAllRoles("erkak") }, enabled = !busy, label = { Text("Hammasi erkak") })
-                        AssistChip(onClick = { vm.setAllRoles("ayol") }, enabled = !busy, label = { Text("Hammasi ayol") })
-                        AssistChip(onClick = { vm.setAllRoles("bola") }, enabled = !busy, label = { Text("Hammasi bola") })
-                        AssistChip(onClick = { vm.restoreAutoRoles(context) }, enabled = !busy, label = { Text("Avtomatik aniqlangan") })
-                        AssistChip(onClick = { vm.setAllRoles("") }, enabled = !busy, label = { Text("Hammasi asl (—)") })
+                        FilterChip(
+                            selected = onlyProblems,
+                            onClick = { onlyProblems = !onlyProblems },
+                            label = { Text("⚠ Muammoli") }
+                        )
+                        FilterChip(
+                            selected = onlyNoVoice,
+                            onClick = { onlyNoVoice = !onlyNoVoice },
+                            label = { Text("Ovoz yo'q") }
+                        )
+                        FilterChip(
+                            selected = seqMode,
+                            onClick = {
+                                if (!seqMode) {
+                                    seqMode = true
+                                    seqIndex = units.indexOfFirst { !it.hasUserVoice }.takeIf { it >= 0 } ?: 0
+                                } else {
+                                    seqMode = false; seqIndex = -1
+                                }
+                            },
+                            label = { Text(if (seqMode) "Ketma-ket: to'xtat" else "Ketma-ket") }
+                        )
                     }
-                    Text(
-                        "«—» = ONNX ovozining o'z tembri (o'zgartirilmaydi). Har bir gapni alohida ham sozlash mumkin.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = cs.onSurfaceVariant
-                    )
+                    if (videoUri != null) {
+                        IconButton(onClick = { showVideo = !showVideo }) {
+                            Icon(
+                                if (showVideo) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                contentDescription = if (showVideo) "Videoni yashirish" else "Videoni ko'rsatish"
+                            )
+                        }
+                    }
+                    IconButton(onClick = { showInfo = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Izoh")
+                    }
                 }
 
-                Text(
-                    "Vaqtni bosing → video shu joyga o'tadi. Mikrofon → o'z ovozi. 🔄 → faqat shu gapni qayta tarjima.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cs.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
+                // Kichik video: tahrirlashga halal bermaydi, kerak bo'lmasa yashiriladi
+                if (showVideo) {
+                    videoUri?.let { uri ->
+                        VideoPlayer(
+                            uri = uri,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            seekMs = seekMs,
+                            seekToken = seekTick,
+                            maxVideoHeight = (screenHeightDp * 0.2f).coerceIn(100f, 170f).dp
+                        )
+                    }
+                }
             }
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 32.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {

@@ -159,6 +159,7 @@ private fun PlayerBody(
         BoxWithConstraints(Modifier.fillMaxWidth()) {
         val natural = maxWidth / aspect
         val boxHeight = if (natural > capDp) capDp else natural
+        val compact = boxHeight < 190.dp   // kichik oyna: ikonka va subtitr ixchamlashadi
         Box(
             Modifier.fillMaxWidth().height(boxHeight),
             contentAlignment = Alignment.Center
@@ -208,7 +209,7 @@ private fun PlayerBody(
                     ) {
                         Icon(
                             Icons.Default.PlayArrow, contentDescription = "Ijro etish", tint = Color.White,
-                            modifier = Modifier.padding(12.dp).size(44.dp)
+                            modifier = Modifier.padding(if (compact) 6.dp else 12.dp).size(if (compact) 28.dp else 44.dp)
                         )
                     }
                 }
@@ -218,7 +219,7 @@ private fun PlayerBody(
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(8.dp)
+                        .padding(if (compact) 4.dp else 8.dp)
                 ) {
                     Surface(
                         color = Color.Black.copy(alpha = 0.7f),
@@ -228,9 +229,11 @@ private fun PlayerBody(
                         Text(
                             liveSub,
                             color = Color.White,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                             textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            maxLines = if (compact) 2 else 4,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = if (compact) 4.dp else 8.dp)
                         )
                     }
                 }
