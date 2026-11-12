@@ -63,9 +63,12 @@ data class AppConfig(
     /** Chiqish audio sifati: 0 = standart (22.05 kHz, 96 kbps), 1 = yuqori (44.1 kHz, 160 kbps). */
     val audioQuality: Int = 0,
     /** Gap izohiga qarab ovoz balandligi siljishi (yarim ton). */
-    val rolePitchMale: Float = -2f,
-    val rolePitchFemale: Float = 3f,
-    val rolePitchChild: Float = 5f,
+    /** «Erkak» uchun qo'shimcha nozik sozlash (asosiy ovoz erkak bo'lsa 0 = o'zgarishsiz). */
+    val rolePitchMale: Float = 0f,
+    /** Erkak ovozidan ayol ovoziga farq (yarim ton). */
+    val rolePitchFemale: Float = 5f,
+    /** Erkak ovozidan bola ovoziga farq (yarim ton). */
+    val rolePitchChild: Float = 8f,
     /** Gapirayotgan jinsini asl nutqdan avtomatik aniqlab, ovozga tembr siljishini qo'llash. */
     val autoVoiceRole: Boolean = true,
     /** Asosiy dublyaj ovozi (VITS modeli) ayol ovozimi. false = erkak. */

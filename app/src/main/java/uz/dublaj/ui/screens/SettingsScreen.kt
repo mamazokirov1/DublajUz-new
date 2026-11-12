@@ -716,7 +716,7 @@ fun SettingsScreen(
                     "Asl nutqdagi ovoz balandligidan gapirayotgan jinsi aniqlanadi va dublyaj tembri shunga moslanadi. Videoni qayta aniqlaganda ishlaydi.",
                     config.autoVoiceRole
                 ) { vm.setConfig(config.copy(autoVoiceRole = it)) }
-                if (config.autoVoiceRole) {
+                run {
                     Text("Dublyaj ovozi (modelning o'zi)", style = MaterialTheme.typography.labelLarge)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         FilterChip(
@@ -731,7 +731,7 @@ fun SettingsScreen(
                         )
                     }
                     Text(
-                        "\"Tinglab ko'rish\" bilan modelingiz ovozini eshitib, shuni tanlang. Shu jinsdagi gaplar o'zgarmaydi, boshqa jinsdagilar tembri siljiydi.",
+                        "\"Tinglab ko'rish\" bilan modelingiz ovozini eshitib, shuni tanlang. Shu jinsdagi gaplar o'zgarmaydi, boshqa jinsdagilar tembri shunga nisbatan siljiydi (erkak/ayol/bola izohlari ham).",
                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                     )
                 }
@@ -762,21 +762,21 @@ fun SettingsScreen(
                     ) { vm.setConfig(config.copy(fitScale = it)) }
 
                     HelpSlider(
-                        "Ayol ovozi siljishi", "%+.1f".format(config.rolePitchFemale),
-                        "Tahrirda gapga \"ayol\" izohi qo'yilganda ovoz tembri shuncha yarim tonga ko'tariladi.",
-                        config.rolePitchFemale, 0f..6f, steps = 11
+                        "Ayol ovozi (erkak ovozidan farqi)", "%+.1f".format(config.rolePitchFemale),
+                        "«Ayol» izohli gaplar tembri erkak ovozidan shuncha yarim tonga ingichka bo'ladi. Dublyaj ovozi ayol bo'lsa, «ayol» o'zgarmaydi.",
+                        config.rolePitchFemale, 0f..10f, steps = 19
                     ) { vm.setConfig(config.copy(rolePitchFemale = it)) }
 
                     HelpSlider(
-                        "Erkak ovozi siljishi", "%+.1f".format(config.rolePitchMale),
-                        "\"Erkak\" izohli gaplar uchun tembr siljishi (manfiy = qalinroq).",
-                        config.rolePitchMale, -5f..2f, steps = 13
+                        "Erkak ovozi (qo'shimcha sozlash)", "%+.1f".format(config.rolePitchMale),
+                        "«Erkak» izohli gaplarga qo'shimcha siljish (manfiy = qalinroq). Dublyaj ovozi erkak bo'lsa 0 qoldiring. Ayol bo'lsa, erkak tembri avtomatik pasaytiriladi.",
+                        config.rolePitchMale, -4f..4f, steps = 15
                     ) { vm.setConfig(config.copy(rolePitchMale = it)) }
 
                     HelpSlider(
-                        "Bola ovozi siljishi", "%+.1f".format(config.rolePitchChild),
-                        "\"Bola\" izohli gaplar uchun tembr siljishi.",
-                        config.rolePitchChild, 2f..8f, steps = 11
+                        "Bola ovozi (erkak ovozidan farqi)", "%+.1f".format(config.rolePitchChild),
+                        "«Bola» izohli gaplar tembri erkak ovozidan shuncha yarim tonga ingichka bo'ladi.",
+                        config.rolePitchChild, 2f..12f, steps = 19
                     ) { vm.setConfig(config.copy(rolePitchChild = it)) }
                 }
 
@@ -806,6 +806,15 @@ fun SettingsScreen(
                         Icon(Icons.Default.PlayArrow, null)
                         Spacer(Modifier.width(6.dp))
                         Text("Tinglab ko'rish")
+                    }
+                    OutlinedButton(onClick = { vm.previewVoice(context, sample, "erkak") }, enabled = models.vits && !busy, shape = MaterialTheme.shapes.medium) {
+                        Text("Erkak")
+                    }
+                    OutlinedButton(onClick = { vm.previewVoice(context, sample, "ayol") }, enabled = models.vits && !busy, shape = MaterialTheme.shapes.medium) {
+                        Text("Ayol")
+                    }
+                    OutlinedButton(onClick = { vm.previewVoice(context, sample, "bola") }, enabled = models.vits && !busy, shape = MaterialTheme.shapes.medium) {
+                        Text("Bola")
                     }
                     OutlinedButton(onClick = { vm.stopPreview() }, shape = MaterialTheme.shapes.medium) {
                         Icon(Icons.Default.Stop, null)

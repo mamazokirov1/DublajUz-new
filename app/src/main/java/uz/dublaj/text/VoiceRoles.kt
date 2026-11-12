@@ -1,5 +1,6 @@
 package uz.dublaj.text
 
+import uz.dublaj.data.AppConfig
 import uz.dublaj.data.TranscriptUnit
 
 /**
@@ -28,5 +29,26 @@ object VoiceRoles {
             out[u.id] = if (female) "ayol" else "erkak"
         }
         return out
+    }
+
+    /**
+     * Gap izohi ("erkak"/"ayol"/"bola"/"") uchun jami tembr siljishi (yarim ton, voicePitch ham qo'shiladi).
+     *
+     * Siljishlar ASOSIY OVOZ (model) jinsiga nisbatan hisoblanadi:
+     *  - model erkak ovozi: «erkak» o'zgarmaydi, «ayol» va «bola» ko'tariladi;
+     *  - model ayol ovozi: «ayol» o'zgarmaydi, «erkak» pasayadi, «bola» biroz ko'tariladi.
+     * Sozlamalardagi qiymatlar ERKAK modelga nisbatan: rolePitchFemale = erkak→ayol farqi,
+     * rolePitchChild = erkak→bola farqi, rolePitchMale = «erkak» uchun qo'shimcha nozik sozlash.
+     */
+    fun pitchFor(role: String, c: AppConfig): Float {
+        val fromMale = when (role) {
+            "erkak" -> c.rolePitchMale
+            "ayol" -> c.rolePitchFemale
+            "bola" -> c.rolePitchChild
+            else -> return c.voicePitch
+        }
+        // Ayol model erkak o'lchamidan rolePitchFemale yarim ton yuqorida turadi
+        val modelOffset = if (c.baseVoiceFemale) c.rolePitchFemale else 0f
+        return (c.voicePitch + fromMale - modelOffset).coerceIn(-12f, 16f)
     }
 }

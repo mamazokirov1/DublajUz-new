@@ -810,13 +810,7 @@ class DubbingPipeline {
                     Timber.i("Gap #${u.id}: foydalanuvchi ovozi")
                 } else {
                     // Erkak/ayol/bola izohi → pitch (taxminiy, alohida model emas)
-                    val basePitch = config.voicePitch
-                    val rolePitch = when (u.voiceRole) {
-                        "ayol" -> basePitch + config.rolePitchFemale
-                        "bola" -> basePitch + config.rolePitchChild
-                        "erkak" -> basePitch + config.rolePitchMale
-                        else -> basePitch
-                    }
+                    val rolePitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
                     if (vitsOk) {
                         try { vits().pitchSemitones = rolePitch } catch (_: Exception) {}
                     }

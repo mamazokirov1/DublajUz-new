@@ -263,7 +263,7 @@ class PipelineViewModel : ViewModel() {
     val previewState: StateFlow<String?> = _preview.asStateFlow()
 
     /** Joriy sozlamalar bilan matnni sintez qilib chaladi. Dublyaj paytida o'chiq (xotira). */
-    fun previewVoice(context: Context, text: String) {
+    fun previewVoice(context: Context, text: String, role: String = "") {
         val app = context.applicationContext
         if (isBusy) {
             _preview.value = "Dublyaj/tarjima ishlayotganda tinglab bo'lmaydi"
@@ -281,7 +281,8 @@ class PipelineViewModel : ViewModel() {
                     val synth = previewSynth ?: pipeline.loadPreviewSynth(app, cfg).also { previewSynth = it }
                     synth.configure(
                         cfg.voiceNoise, cfg.voiceNoiseW,
-                        1f / cfg.voiceSpeed.coerceAtLeast(0.3f), cfg.fitScale, cfg.voicePause, cfg.voicePitch
+                        1f / cfg.voiceSpeed.coerceAtLeast(0.3f), cfg.fitScale, cfg.voicePause,
+                        uz.dublaj.text.VoiceRoles.pitchFor(role, cfg)
                     )
                     synth.setUserPronunciations(cfg.pronDict)
                     val seg = synth.synthesize(text, null)

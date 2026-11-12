@@ -27,9 +27,9 @@ object ConfigStore {
             duckAmount = sp.getFloat("duckAmount", d.duckAmount),
             levelClips = sp.getBoolean("levelClips", d.levelClips),
             audioQuality = sp.getInt("audioQuality", d.audioQuality),
-            rolePitchMale = sp.getFloat("rolePitchMale", d.rolePitchMale),
-            rolePitchFemale = sp.getFloat("rolePitchFemale", d.rolePitchFemale),
-            rolePitchChild = sp.getFloat("rolePitchChild", d.rolePitchChild),
+            rolePitchMale = sp.getFloat("rolePitchMaleV2", d.rolePitchMale),
+            rolePitchFemale = sp.getFloat("rolePitchFemaleV2", d.rolePitchFemale),
+            rolePitchChild = sp.getFloat("rolePitchChildV2", d.rolePitchChild),
             autoVoiceRole = sp.getBoolean("autoVoiceRole", d.autoVoiceRole),
             baseVoiceFemale = sp.getBoolean("baseVoiceFemale", d.baseVoiceFemale),
             expertMode = sp.getBoolean("expertMode", d.expertMode),
@@ -104,9 +104,9 @@ object ConfigStore {
             .putFloat("duckAmount", c.duckAmount)
             .putBoolean("levelClips", c.levelClips)
             .putInt("audioQuality", c.audioQuality)
-            .putFloat("rolePitchMale", c.rolePitchMale)
-            .putFloat("rolePitchFemale", c.rolePitchFemale)
-            .putFloat("rolePitchChild", c.rolePitchChild)
+            .putFloat("rolePitchMaleV2", c.rolePitchMale)
+            .putFloat("rolePitchFemaleV2", c.rolePitchFemale)
+            .putFloat("rolePitchChildV2", c.rolePitchChild)
             .putBoolean("autoVoiceRole", c.autoVoiceRole)
             .putBoolean("baseVoiceFemale", c.baseVoiceFemale)
             .putBoolean("expertMode", c.expertMode)
