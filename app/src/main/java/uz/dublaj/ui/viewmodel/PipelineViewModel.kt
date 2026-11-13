@@ -375,6 +375,7 @@ class PipelineViewModel : ViewModel() {
         if (isBusy) return
         _videoUri.value = uri
         _hasTranscript.value = false
+        undoStack.clear()
         _translationUnits.value = emptyList()
         _approved.value = false
         _state.value = PipelineState.Idle
@@ -436,6 +437,7 @@ class PipelineViewModel : ViewModel() {
                     _state.value = PipelineState.Running("Tarjima", p, m)
                 }
             }
+            undoStack.clear()
             _translationUnits.value = units
             _approved.value = false
             _translateResume.value = null
@@ -495,6 +497,115 @@ class PipelineViewModel : ViewModel() {
         _approved.value = false
     }
 
+    // ------------------------------------------------------------------ bekor qilish (Undo)
+
+    private class UndoEntry(
+        val label: String,
+        val roles: Map<Int, String>?,
+        val speakers: Map<Int, Int>?,
+        val texts: Map<Int, TranslationUnit>?
+    )
+    private val undoStack = ArrayList<UndoEntry>()
+    private val _undoOffers = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    /** Ommaviy o'zgarishdan keyin chiqadi: ekran «Qaytarish» tugmali xabar ko'rsatadi. */
+    val undoOffers: SharedFlow<String> = _undoOffers.asSharedFlow()
+
+    /** O'zgarishdan OLDIN chaqiriladi: faqat o'zgaradigan maydonlar eslab qolinadi (keyingi tahrirlar buzilmaydi). */
+    private fun pushUndo(label: String, roles: Boolean = false, speakers: Boolean = false, oldTexts: List<TranslationUnit>? = null) {
+        val cur = _translationUnits.value
+        undoStack.add(
+            UndoEntry(
+                label,
+                if (roles) cur.associate { it.id to it.voiceRole } else null,
+                if (speakers) cur.associate { it.id to it.speaker } else null,
+                oldTexts?.associateBy { it.id }
+            )
+        )
+        while (undoStack.size > 10) undoStack.removeAt(0)
+        _undoOffers.tryEmit(label)
+    }
+
+    fun undo() {
+        if (undoStack.isEmpty()) return
+        val e = undoStack.removeAt(undoStack.lastIndex)
+        _translationUnits.value = _translationUnits.value.map { u ->
+            var x = u
+            e.roles?.get(u.id)?.let { x = x.copy(voiceRole = it) }
+            e.speakers?.get(u.id)?.let { x = x.copy(speaker = it) }
+            e.texts?.get(u.id)?.let { x = x.copy(uzText = it.uzText, check = it.check, issue = it.issue) }
+            x
+        }
+        _approved.value = false
+        toast("Qaytarildi: ${e.label}")
+    }
+
+    // ------------------------------------------------------------------ qidirish va almashtirish
+
+    /** Hamma gaplarda [find] ni [repl] ga almashtiradi. Nechta gap o'zgargani qaytariladi. */
+    fun replaceInTexts(find: String, repl: String, matchCase: Boolean, wholeWord: Boolean): Int {
+        if (find.isEmpty()) return 0
+        val re = uz.dublaj.text.FindReplace.regex(find, matchCase, wholeWord)
+        val replacement = Regex.escapeReplacement(repl)
+        val old = ArrayList<TranslationUnit>()
+        val newList = _translationUnits.value.map { u ->
+            if (re.containsMatchIn(u.uzText)) {
+                val t = re.replace(u.uzText, replacement)
+                if (t != u.uzText) {
+                    old.add(u)
+                    return@map u.copy(uzText = t, check = false, issue = null)
+                }
+            }
+            u
+        }
+        if (old.isEmpty()) return 0
+        pushUndo("${old.size} ta gapda «$find» → «$repl»", oldTexts = old)
+        _translationUnits.value = newList
+        _approved.value = false
+        return old.size
+    }
+
+    // ------------------------------------------------------------------ spikerlar bo'yicha guruhlash
+
+    fun setSpeaker(index: Int, speaker: Int) {
+        val list = _translationUnits.value.toMutableList()
+        if (index !in list.indices) return
+        list[index] = list[index].copy(speaker = speaker)
+        _translationUnits.value = list
+        _approved.value = false
+    }
+
+    /** Gaplar orasidagi pauza ≥ [gapSec] bo'lsa spiker almashadi: Spiker 1 → 2 → 1 … (taxminiy, qo'lda tuzatiladi). */
+    fun detectSpeakers(count: Int = 2, gapSec: Double = 1.2) {
+        val sorted = _translationUnits.value.sortedBy { it.start }
+        if (sorted.isEmpty()) return
+        pushUndo("Spikerlar pauzalar bo'yicha ajratildi", speakers = true)
+        val bySpeaker = HashMap<Int, Int>()
+        var cur = 1
+        var prevEnd = sorted.first().start
+        sorted.forEachIndexed { i, u ->
+            if (i > 0 && u.start - prevEnd >= gapSec) cur = if (cur >= count) 1 else cur + 1
+            bySpeaker[u.id] = cur
+            prevEnd = u.end
+        }
+        _translationUnits.value = _translationUnits.value.map { it.copy(speaker = bySpeaker[it.id] ?: 0) }
+        _approved.value = false
+    }
+
+    fun clearSpeakers() {
+        if (_translationUnits.value.none { it.speaker > 0 }) return
+        pushUndo("Spiker belgilari o'chirildi", speakers = true)
+        _translationUnits.value = _translationUnits.value.map { it.copy(speaker = 0) }
+    }
+
+    /** Bir spikerning hamma gapiga ovozni (rolni) birdan berish. */
+    fun setRoleForSpeaker(speaker: Int, role: String) {
+        if (_translationUnits.value.none { it.speaker == speaker }) return
+        val name = when (role) { "erkak" -> "erkak"; "ayol" -> "ayol"; "bola" -> "bola"; else -> "asl ovoz" }
+        pushUndo("Spiker $speaker: hamma gap $name ovoziga o'tkazildi", roles = true)
+        _translationUnits.value = _translationUnits.value.map { if (it.speaker == speaker) it.copy(voiceRole = role) else it }
+        _approved.value = false
+    }
+
     fun setVoiceRole(index: Int, role: String) {
         val list = _translationUnits.value.toMutableList()
         if (index !in list.indices) return
@@ -511,6 +622,7 @@ class PipelineViewModel : ViewModel() {
     fun autoAssignRoles(gapSec: Double = 1.2) {
         val list = _translationUnits.value.sortedBy { it.start }.toMutableList()
         if (list.isEmpty()) return
+        pushUndo("Spikerlar taxminan belgilandi (erkak/ayol)", roles = true)
         var role = "erkak"
         var prevEnd = list.first().start
         for (i in list.indices) {
@@ -525,10 +637,10 @@ class PipelineViewModel : ViewModel() {
         val byId = list.associateBy { it.id }
         _translationUnits.value = _translationUnits.value.map { byId[it.id] ?: it }
         _approved.value = false
-        toast("Spikerlar taxminan belgilandi (erkak/ayol). Kerak bo'lsa qo'lda tuzating.")
     }
 
     fun clearAllRoles() {
+        pushUndo("Hamma ovoz belgilari tozalandi", roles = true)
         _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = "") }
         _approved.value = false
     }
@@ -536,16 +648,17 @@ class PipelineViewModel : ViewModel() {
     /** Hamma gaplarni bitta ovozga o'tkazish: "erkak" | "ayol" | "bola" | "" (ONNX ning asl ovozi). */
     fun setAllRoles(role: String) {
         if (_translationUnits.value.isEmpty()) return
-        _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = role) }
-        _approved.value = false
-        toast(
+        pushUndo(
             when (role) {
                 "erkak" -> "Hamma gap erkak ovoziga o'tkazildi"
                 "ayol" -> "Hamma gap ayol ovoziga o'tkazildi"
                 "bola" -> "Hamma gap bola ovoziga o'tkazildi"
                 else -> "Hamma gap ONNX ning asl ovoziga qaytarildi"
-            }
+            },
+            roles = true
         )
+        _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = role) }
+        _approved.value = false
     }
 
     /** Asl nutq ton balandligidan aniqlangan erkak/ayol belgilarini qayta qo'yadi. */
@@ -555,9 +668,9 @@ class PipelineViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val map = withContext(Dispatchers.IO) { pipeline.autoRolesFor(app, _config.value) }
+                pushUndo("Avtomatik aniqlangan ovozlar qaytarildi", roles = true)
                 _translationUnits.value = _translationUnits.value.map { it.copy(voiceRole = map[it.id] ?: "") }
                 _approved.value = false
-                toast("Avtomatik aniqlangan ovozlar qaytarildi")
             } catch (e: Exception) {
                 toast("Avtomatik aniqlab bo'lmadi: ${e.message ?: "matn ma'lumoti yo'q"}")
             }
@@ -757,6 +870,7 @@ class PipelineViewModel : ViewModel() {
                     _state.value = PipelineState.Running("Tarjima", 0.5f + p * 0.5f, m)
                 }
             }
+            undoStack.clear()
             _translationUnits.value = units
             _approved.value = false
             _translateResume.value = null
@@ -1134,6 +1248,7 @@ class PipelineViewModel : ViewModel() {
         // Navbat umumiy ish papkasidan foydalanadi: joriy bitta-video loyihasi tozalanadi
         _videoUri.value = null
         _hasTranscript.value = false
+        undoStack.clear()
         _translationUnits.value = emptyList()
         _approved.value = false
         _state.value = PipelineState.Idle

@@ -29,7 +29,9 @@ data class TranslationUnit(
     /** Oddiy izoh: "" | "erkak" | "ayol" | "bola" — keyinchalik ovoz tanlash uchun. */
     val voiceRole: String = "",
     /** Foydalanuvchi shu gap uchun o'z ovozini yozganmi (segment wav mavjud). */
-    val hasUserVoice: Boolean = false
+    val hasUserVoice: Boolean = false,
+    /** Spiker raqami: 0 = belgilanmagan, 1.. = «Spiker N» (ovozni spiker bo'yicha birdan berish uchun). */
+    val speaker: Int = 0
 )
 
 data class AppConfig(

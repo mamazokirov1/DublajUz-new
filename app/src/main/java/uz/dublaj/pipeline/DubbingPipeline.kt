@@ -600,6 +600,7 @@ class DubbingPipeline {
                 if (u.issue != null) put("issue", u.issue)
                 put("voiceRole", u.voiceRole)
                 put("hasUserVoice", u.hasUserVoice)
+                if (u.speaker > 0) put("speaker", u.speaker)
                 if (u.alts.isNotEmpty()) put("alts", JSONArray(u.alts))
             })
         }
@@ -620,7 +621,8 @@ class DubbingPipeline {
                     u.optJSONArray("alts")?.let { arr -> (0 until arr.length()).map { k -> arr.getString(k) } } ?: emptyList(),
                     if (u.has("issue") && !u.isNull("issue")) u.getString("issue") else null,
                     u.optString("voiceRole", ""),
-                    u.optBoolean("hasUserVoice", false)
+                    u.optBoolean("hasUserVoice", false),
+                    u.optInt("speaker", 0)
                 )
             }
         } catch (e: Exception) {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.*
@@ -29,9 +30,11 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uz.dublaj.data.TranslationUnit
+import uz.dublaj.text.FindReplace
 import uz.dublaj.ui.components.VideoPlayer
 import uz.dublaj.ui.components.fmtTime
 import uz.dublaj.util.ExportUtils
@@ -69,6 +72,35 @@ fun EditTranslationScreen(
     // Past (yoki gorizontal) ekranda video avtomatik yashirin: tahrirlash uchun joy qolsin
     var showVideo by remember { mutableStateOf(screenHeightDp >= 600) }
     var showInfo by remember { mutableStateOf(false) }
+    val snackbarState = remember { SnackbarHostState() }
+    var showFind by remember { mutableStateOf(false) }
+    var showSpeakers by remember { mutableStateOf(false) }
+    var pendingScrollId by remember { mutableStateOf<Int?>(null) }
+    val speakersOn = units.any { it.speaker > 0 }
+
+    // Ommaviy o'zgarishdan keyin «Qaytarish» tugmali xabar
+    LaunchedEffect(Unit) {
+        vm.undoOffers.collectLatest { label ->
+            val r = snackbarState.showSnackbar(
+                message = label,
+                actionLabel = "Qaytarish",
+                duration = SnackbarDuration.Long
+            )
+            if (r == SnackbarResult.ActionPerformed) vm.undo()
+        }
+    }
+
+    if (showFind) {
+        FindReplaceDialog(
+            units = units,
+            onDismiss = { showFind = false },
+            onApply = { f, r, mc, ww ->
+                val n = vm.replaceInTexts(f, r, mc, ww)
+                if (n == 0) vm.toast("Hech narsa topilmadi")
+            }
+        )
+    }
+    if (showSpeakers) SpeakersDialog(units = units, vm = vm, onDismiss = { showSpeakers = false })
 
     if (showInfo) {
         AlertDialog(
@@ -78,6 +110,10 @@ fun EditTranslationScreen(
                 Text(
                     "• Vaqtni bosing — video shu joyga o'tadi.\n" +
                         "• ▶ — shu gapni tanlangan rol bilan darhol tinglash (yana bossangiz to'xtaydi).\n" +
+                        "• ⋮ → Qidirish va almashtirish: ism yoki atamani hamma gapda birdan almashtiradi.\n" +
+                        "• ⋮ → Spikerlar: gaplarni spikerlarga ajratib, ovozni spiker bo'yicha birdan berasiz.\n" +
+                        "• Ommaviy o'zgarishdan keyin pastda «Qaytarish» chiqadi.\n" +
+                        "• «Keyingi muammo» tugmasi ⚠ belgili gapga o'tkazadi.\n" +
                         "• Mikrofon — o'z ovozingiz bilan yozish.\n" +
                         "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
                         "• Ovoz belgisi «—» — ONNX ovozining o'z tembri (o'zgartirilmaydi).\n" +
@@ -99,8 +135,38 @@ fun EditTranslationScreen(
         }
     }
 
+    LaunchedEffect(pendingScrollId, filtered) {
+        val id = pendingScrollId ?: return@LaunchedEffect
+        val pos = filtered.indexOfFirst { it.second.id == id }
+        if (pos >= 0) {
+            listState.animateScrollToItem(pos)
+            pendingScrollId = null
+        }
+    }
+
+    /** Ko'rinib turgan gapdan keyingi ⚠ belgili gapga o'tadi (oxirida boshidan). */
+    fun goToNextProblem() {
+        if (units.none { it.check }) { vm.toast("Muammoli gap yo'q ✓"); return }
+        val curId = filtered.getOrNull(listState.firstVisibleItemIndex)?.second?.id
+        val curIdx = units.indexOfFirst { it.id == curId }
+        val target = units.withIndex().firstOrNull { (i, u) -> u.check && i > curIdx }?.value
+            ?: units.first { it.check }
+        if (onlyNoVoice && !onlyProblems && target.hasUserVoice) onlyNoVoice = false
+        pendingScrollId = target.id
+    }
+
     Scaffold(
         containerColor = cs.background,
+        snackbarHost = { SnackbarHost(snackbarState) },
+        floatingActionButton = {
+            if (pending > 0 && !imeVisible) {
+                ExtendedFloatingActionButton(
+                    onClick = { goToNextProblem() },
+                    icon = { Icon(Icons.Default.Warning, contentDescription = null) },
+                    text = { Text("Keyingi muammo ($pending)") }
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -132,6 +198,17 @@ fun EditTranslationScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = "Menyu")
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Qidirish va almashtirish…") },
+                                enabled = !busy,
+                                onClick = { menu = false; showFind = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Spikerlar…") },
+                                enabled = !busy,
+                                onClick = { menu = false; showSpeakers = true }
+                            )
+                            HorizontalDivider()
                             Text(
                                 "Hamma gaplar uchun ovoz",
                                 style = MaterialTheme.typography.labelMedium,
@@ -268,7 +345,7 @@ fun EditTranslationScreen(
 
             LazyColumn(
                 state = listState,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f)
             ) {
@@ -283,6 +360,7 @@ fun EditTranslationScreen(
                         vm = vm,
                         busy = busy,
                         slotSec = slotSec,
+                        showSpeakers = speakersOn,
                         previewing = previewUnit == unit.id,
                         preparing = previewUnit == unit.id && previewPhase?.startsWith("Ovoz tayyor") == true,
                         highlightSeq = seqMode && index == seqIndex,
@@ -312,6 +390,7 @@ private fun UnitCard(
     vm: PipelineViewModel,
     busy: Boolean,
     slotSec: Double,
+    showSpeakers: Boolean,
     previewing: Boolean,
     preparing: Boolean,
     highlightSeq: Boolean,
@@ -426,6 +505,22 @@ private fun UnitCard(
                 }
             }
 
+            if (showSpeakers) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("Spiker:", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                    listOf(0 to "—", 1 to "1", 2 to "2", 3 to "3", 4 to "4").forEach { (n, label) ->
+                        FilterChip(
+                            selected = unit.speaker == n,
+                            onClick = { vm.setSpeaker(index, n) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+
             Surface(
                 shape = MaterialTheme.shapes.small,
                 color = cs.surfaceVariant.copy(alpha = 0.55f),
@@ -498,4 +593,104 @@ private fun UnitCard(
             }
         }
     }
+}
+
+
+@Composable
+private fun FindReplaceDialog(
+    units: List<TranslationUnit>,
+    onDismiss: () -> Unit,
+    onApply: (find: String, repl: String, matchCase: Boolean, wholeWord: Boolean) -> Unit
+) {
+    var find by remember { mutableStateOf("") }
+    var repl by remember { mutableStateOf("") }
+    var matchCase by remember { mutableStateOf(false) }
+    var whole by remember { mutableStateOf(false) }
+    val count = remember(find, matchCase, whole, units) { FindReplace.countUnits(units, find, matchCase, whole) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Qidirish va almashtirish") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = find, onValueChange = { find = it },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text("Qidirilayotgan so'z") }
+                )
+                OutlinedTextField(
+                    value = repl, onValueChange = { repl = it },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text("Yangi so'z (bo'sh = o'chirish)") }
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = matchCase, onCheckedChange = { matchCase = it })
+                    Text("Katta-kichik harfni farqlash")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = whole, onCheckedChange = { whole = it })
+                    Text("Faqat butun so'z")
+                }
+                Text(
+                    if (find.isEmpty()) "O'zbekcha matnlarda qidiriladi." else "$count ta gapda topildi",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = find.isNotEmpty() && count > 0,
+                onClick = { onApply(find, repl, matchCase, whole); onDismiss() }
+            ) { Text("Hammasini almashtirish") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Bekor") } }
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpeakersDialog(
+    units: List<TranslationUnit>,
+    vm: PipelineViewModel,
+    onDismiss: () -> Unit
+) {
+    val groups = units.filter { it.speaker > 0 }.groupBy { it.speaker }.toSortedMap()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Spikerlar") },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (groups.isEmpty()) {
+                    Text(
+                        "Hali spiker belgilanmagan. «Pauza bo'yicha ajratish» gaplarni spikerlarga taxminan bo'ladi " +
+                            "(pauza uzun bo'lsa, spiker almashadi). Keyin har bir gapdagi 1/2/3/4 tugmalari bilan tuzatasiz " +
+                            "va ovozni spiker bo'yicha birdan berasiz.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                for ((n, list) in groups) {
+                    val current = list.map { it.voiceRole }.distinct().singleOrNull()
+                    Text("Spiker $n · ${list.size} gap", style = MaterialTheme.typography.titleSmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("" to "—", "erkak" to "Erkak", "ayol" to "Ayol", "bola" to "Bola").forEach { (id, label) ->
+                            FilterChip(
+                                selected = current == id,
+                                onClick = { vm.setRoleForSpeaker(n, id) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { vm.detectSpeakers(2) }) { Text("Pauza bo'yicha: 2 spiker") }
+                    OutlinedButton(onClick = { vm.detectSpeakers(3) }) { Text("3 spiker") }
+                    if (groups.isNotEmpty()) TextButton(onClick = { vm.clearSpeakers() }) { Text("Belgilarni o'chirish") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Yopish") } }
+    )
 }
