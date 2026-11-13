@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import uz.dublaj.translate.AiProvider
 import uz.dublaj.translate.activeKey
+import uz.dublaj.translate.activeKeyCount
 import uz.dublaj.translate.activeModel
 import uz.dublaj.translate.provider
 import androidx.compose.ui.text.style.TextOverflow
@@ -335,7 +336,14 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = MaterialTheme.shapes.medium,
                     singleLine = true,
-                    label = { Text("${prov.label} API kaliti") },
+                    label = { Text("${prov.label} API kalit(lar)i") },
+                    supportingText = {
+                        val n = config.activeKeyCount()
+                        Text(
+                            if (n > 1) "$n ta kalit: limit tugasa keyingisiga o'zi o'tadi."
+                            else "Bir nechta kalit bo'lsa, vergul yoki probel bilan ajratib yozing: limit tugasa ilova keyingisiga o'zi o'tadi."
+                        )
+                    },
                     visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation()
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

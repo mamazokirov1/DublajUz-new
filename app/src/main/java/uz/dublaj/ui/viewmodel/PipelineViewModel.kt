@@ -19,6 +19,7 @@ import timber.log.Timber
 import uz.dublaj.data.AppConfig
 import uz.dublaj.translate.activeKey
 import uz.dublaj.translate.newTranslator
+import uz.dublaj.translate.withAddedKey
 import uz.dublaj.translate.provider
 import uz.dublaj.data.ConfigStore
 import uz.dublaj.data.VoicePreset
@@ -261,18 +262,40 @@ class PipelineViewModel : ViewModel() {
     private var previewJob: Job? = null
     private val _preview = MutableStateFlow<String?>(null)
     val previewState: StateFlow<String?> = _preview.asStateFlow()
+    private val _previewUnit = MutableStateFlow(-1)
+    /** Hozir tayyorlanayotgan yoki chalinayotgan gap id si (-1 = hech biri). */
+    val previewUnit: StateFlow<Int> = _previewUnit.asStateFlow()
+
+    /**
+     * Tahrir ekranidagi ▶: gapni aynan dublyajdagidek (rol + vaqt oralig'iga moslab) chaladi.
+     * Shu gap chalinayotgan bo'lsa — to'xtatadi.
+     */
+    fun togglePreview(context: Context, unitId: Int, text: String, role: String, slotSec: Double) {
+        if (_previewUnit.value == unitId && previewJob?.isActive == true) {
+            if (_preview.value?.startsWith("Ijro") == true) {
+                PcmPlayer.stop()
+                previewJob?.cancel()
+                _previewUnit.value = -1
+                _preview.value = null
+            }
+            return
+        }
+        previewVoice(context, text, role, slotSec, unitId)
+    }
 
     /** Joriy sozlamalar bilan matnni sintez qilib chaladi. Dublyaj paytida o'chiq (xotira). */
-    fun previewVoice(context: Context, text: String, role: String = "") {
+    fun previewVoice(context: Context, text: String, role: String = "", slotSec: Double? = null, unitId: Int = -1) {
         val app = context.applicationContext
         if (isBusy) {
             _preview.value = "Dublyaj/tarjima ishlayotganda tinglab bo'lmaydi"
+            toast("Dublyaj/tarjima ishlayotganda tinglab bo'lmaydi")
             return
         }
         if (text.isBlank()) return
         if (previewJob?.isActive == true && _preview.value?.startsWith("Ovoz tayyorlanmoqda") == true) return
         PcmPlayer.stop()
         previewJob?.cancel()
+        _previewUnit.value = unitId
         previewJob = viewModelScope.launch {
             try {
                 _preview.value = "Ovoz tayyorlanmoqda…"
@@ -285,7 +308,7 @@ class PipelineViewModel : ViewModel() {
                         uz.dublaj.text.VoiceRoles.pitchFor(role, cfg)
                     )
                     synth.setUserPronunciations(cfg.pronDict)
-                    val seg = synth.synthesize(text, null)
+                    val seg = synth.synthesize(text, slotSec)
                     (if (cfg.levelClips) AudioLevel.level(seg.pcm) else seg.pcm) to seg.sampleRate
                 }
                 if (pcm.isEmpty()) {
@@ -301,12 +324,16 @@ class PipelineViewModel : ViewModel() {
             } catch (e: Exception) {
                 Timber.e(e, "Preview xato")
                 _preview.value = "Xato: ${e.message ?: e.javaClass.simpleName}"
+                toast("Tinglab bo'lmadi: ${e.message ?: e.javaClass.simpleName}")
+            } finally {
+                if (_previewUnit.value == unitId) _previewUnit.value = -1
             }
         }
     }
 
     fun stopPreview() {
         PcmPlayer.stop()
+        _previewUnit.value = -1
         if (_preview.value?.startsWith("Ijro") == true) _preview.value = null
     }
 
@@ -448,8 +475,7 @@ class PipelineViewModel : ViewModel() {
         var cfg = _config.value
         val key = newKey?.trim().orEmpty()
         if (key.isNotEmpty()) {
-            cfg = if (cfg.provider() == uz.dublaj.translate.AiProvider.GEMINI) cfg.copy(geminiKey = key)
-            else cfg.copy(aiKeys = cfg.aiKeys + (cfg.aiProvider to key))
+            cfg = cfg.withAddedKey(key)
             setConfig(cfg)
         }
         wait.complete(TranslateDecision.Retry(cfg))

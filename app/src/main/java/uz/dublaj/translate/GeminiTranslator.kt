@@ -12,11 +12,18 @@ import java.net.URL
  * Faqat HttpURLConnection + org.json ishlatiladi (qo'shimcha kutubxona kerak emas).
  */
 class GeminiTranslator(
-    private val apiKey: String,
+    apiKey: String,
     private val model: String,
     private val provider: AiProvider = AiProvider.GEMINI,
     private val baseUrl: String = AiProvider.GEMINI.baseUrl
 ) {
+    /** Bir nechta kalit bo'lishi mumkin (ajratkich bilan). Limit tugasa keyingisiga avtomatik o'tiladi. */
+    private val keys: List<String> = splitApiKeys(apiKey).ifEmpty { listOf("") }
+    private var lastKey: String? = null
+
+    /** Kalit almashganda chaqiriladi: (yangi kalit tartib raqami 1..N, jami). */
+    var onKeySwitch: ((Int, Int) -> Unit)? = null
+
     data class Item(val id: Int, val text: String, val maxChars: Int)
     data class Result(val uz: String, val short: String?)
 
@@ -31,7 +38,37 @@ class GeminiTranslator(
     )
 
     /** [fatal] = true: kalit noto'g'ri / ruxsat yo'q — qayta urinishdan foyda yo'q. */
-    class GeminiException(message: String, val fatal: Boolean, val code: Int = 0) : Exception(message)
+    class GeminiException(
+        message: String,
+        val fatal: Boolean,
+        val code: Int = 0,
+        /** Muammo kalitda (limit/noto'g'ri/hisob): boshqa kalit bilan urinib ko'rish mumkin. */
+        val keyIssue: Boolean = false
+    ) : Exception(message)
+
+    /** Hozir ishlatiladigan kalit: dam olayotganlarini o'tkazib, ro'yxatdagi birinchisi. */
+    private fun pickKey(): String {
+        val now = System.currentTimeMillis()
+        val k = keys.firstOrNull { (COOLDOWN[it] ?: 0L) <= now }
+            ?: keys.minByOrNull { COOLDOWN[it] ?: 0L } ?: ""
+        if (lastKey != null && lastKey != k && keys.size > 1) {
+            Timber.i("API kalit almashdi: ${keys.indexOf(k) + 1}/${keys.size}")
+            onKeySwitch?.invoke(keys.indexOf(k) + 1, keys.size)
+        }
+        lastKey = k
+        return k
+    }
+
+    private fun hasFreshKey(): Boolean {
+        val now = System.currentTimeMillis()
+        return keys.any { (COOLDOWN[it] ?: 0L) <= now }
+    }
+
+    /** Hamma kalit ishlamaganda xabarga qo'shimcha izoh. */
+    private fun exhausted(e: GeminiException): GeminiException =
+        if (keys.size > 1 && e.keyIssue)
+            GeminiException("${e.message} (${keys.size} ta kalitning hammasi ishlamadi)", e.fatal, e.code, true)
+        else e
 
     private fun endpoint(): String = when (provider.wire) {
         WireFormat.GEMINI -> "https://generativelanguage.googleapis.com/v1beta/models/${model.trim()}:generateContent"
@@ -86,12 +123,12 @@ class GeminiTranslator(
         }
     }
 
-    private fun applyAuth(conn: HttpURLConnection) {
+    private fun applyAuth(conn: HttpURLConnection, key: String = pickKey()) {
         when (provider.wire) {
-            WireFormat.GEMINI -> conn.setRequestProperty("x-goog-api-key", apiKey.trim())
-            WireFormat.OPENAI -> conn.setRequestProperty("Authorization", "Bearer " + apiKey.trim())
+            WireFormat.GEMINI -> conn.setRequestProperty("x-goog-api-key", key)
+            WireFormat.OPENAI -> conn.setRequestProperty("Authorization", "Bearer " + key)
             WireFormat.ANTHROPIC -> {
-                conn.setRequestProperty("x-api-key", apiKey.trim())
+                conn.setRequestProperty("x-api-key", key)
                 conn.setRequestProperty("anthropic-version", "2023-06-01")
             }
         }
@@ -135,6 +172,7 @@ class GeminiTranslator(
 
     /** Sozlamalardagi "Kalitni tekshirish" tugmasi uchun. */
     fun test(): String = try {
+        resetCooldowns()
         val body = buildBody("You are a connection test.", "Reply with one word: OK", null, false)
         val text = extractText(post(body, retries = 1))
         if (text.isNotBlank()) "${provider.label} ishlayapti ✓ (${model.trim()})" else "${provider.label} javob berdi, lekin matn bo'sh"
@@ -292,17 +330,26 @@ class GeminiTranslator(
     private fun post(body: JSONObject, retries: Int): JSONObject {
         var lastErr: GeminiException? = null
         val delays = longArrayOf(2_000, 5_000, 12_000)
-        for (attempt in 0 until retries) {
+        var attempt = 0
+        var switches = 0
+        while (attempt < retries) {
             try {
                 return postOnce(body)
             } catch (e: GeminiException) {
-                if (e.fatal) throw e
                 lastErr = e
+                // Kalit muammosi: boshqa ishlaydigan kalit bo'lsa, kutmasdan va urinishni sarflamasdan darhol unga o'tamiz
+                if (keys.size > 1 && e.keyIssue && switches < keys.size && hasFreshKey()) {
+                    switches++
+                    Timber.w("Kalit ishlamadi (HTTP ${e.code}), keyingisiga o'tilmoqda")
+                    continue
+                }
+                if (e.fatal) throw exhausted(e)
                 Timber.w("Gemini urinish ${attempt + 1}/$retries: ${e.message}")
                 if (attempt < retries - 1) Thread.sleep(delays[min2(attempt, delays.size - 1)])
+                attempt++
             }
         }
-        throw lastErr ?: GeminiException("Noma'lum xato", false)
+        throw lastErr?.let { exhausted(it) } ?: GeminiException("Noma'lum xato", false)
     }
 
     private fun min2(a: Int, b: Int) = if (a < b) a else b
@@ -319,7 +366,8 @@ class GeminiTranslator(
             conn.readTimeout = 120_000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            applyAuth(conn)
+            val usedKey = pickKey()
+            applyAuth(conn, usedKey)
             conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
 
             val code = conn.responseCode
@@ -334,6 +382,18 @@ class GeminiTranslator(
             }
             val msg = errorMessage(text)
             val fatal = code == 400 || code == 401 || code == 402 || code == 403 || code == 404
+            val keyIssue = code == 429 || code == 402 || code == 401 || code == 403 ||
+                (code == 400 && msg.contains("api key", ignoreCase = true))
+            if (keyIssue && keys.size > 1) {
+                val daily = text.contains("PerDay", true) || text.contains("per day", true) || text.contains("daily", true)
+                val retryAfter = conn.getHeaderField("Retry-After")?.trim()?.toLongOrNull()?.times(1000L)
+                val rest = when {
+                    code != 429 -> 12 * 3600_000L                      // noto'g'ri kalit / hisob tugagan
+                    daily -> 6 * 3600_000L                              // kunlik limit
+                    else -> (retryAfter ?: 65_000L).coerceIn(5_000L, 3600_000L) // daqiqalik limit
+                }
+                COOLDOWN[usedKey] = System.currentTimeMillis() + rest
+            }
             val hint = when (code) {
                 400 -> "so'rov yoki kalit noto'g'ri"
                 401, 403 -> "kalit noto'g'ri yoki ruxsat yo'q"
@@ -342,7 +402,7 @@ class GeminiTranslator(
                 429 -> "limit tugadi, biroz kutish kerak"
                 else -> "server xatosi"
             }
-            throw GeminiException("HTTP $code — $hint${if (msg.isNotEmpty()) ": $msg" else ""}", fatal, code)
+            throw GeminiException("HTTP $code — $hint${if (msg.isNotEmpty()) ": $msg" else ""}", fatal, code, keyIssue)
         } catch (e: GeminiException) {
             throw e
         } catch (e: java.io.IOException) {
@@ -353,6 +413,12 @@ class GeminiTranslator(
     }
 
     companion object {
+        /** Limiti tugagan kalitlar: kalit -> qaysi vaqtgacha ishlatilmaydi. Bir necha tarjimon orasida umumiy. */
+        private val COOLDOWN = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+        /** «Qayta urinish» yoki «Tekshirish» bosilganda hamma kalitni yana sinab ko'rish uchun. */
+        fun resetCooldowns() = COOLDOWN.clear()
+
         const val DEFAULT_MODEL = "gemini-3.5-flash"
         const val KEY_URL = "https://aistudio.google.com/apikey"
 

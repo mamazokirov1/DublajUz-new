@@ -46,6 +46,8 @@ fun EditTranslationScreen(
     onBack: () -> Unit
 ) {
     val units by vm.translationUnits.collectAsState()
+    val previewUnit by vm.previewUnit.collectAsState()
+    val previewPhase by vm.previewState.collectAsState()
     val videoUri by vm.videoUri.collectAsState()
     val busy by vm.busy.collectAsState()
     val context = LocalContext.current
@@ -75,6 +77,7 @@ fun EditTranslationScreen(
             text = {
                 Text(
                     "• Vaqtni bosing — video shu joyga o'tadi.\n" +
+                        "• ▶ — shu gapni tanlangan rol bilan darhol tinglash (yana bossangiz to'xtaydi).\n" +
                         "• Mikrofon — o'z ovozingiz bilan yozish.\n" +
                         "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
                         "• Ovoz belgisi «—» — ONNX ovozining o'z tembri (o'zgartirilmaydi).\n" +
@@ -272,11 +275,16 @@ fun EditTranslationScreen(
                 itemsIndexed(filtered, key = { _, pair -> pair.second.id }) { _, pair ->
                     val index = pair.first
                     val unit = pair.second
+                    // Dublyajdagidek: gapga keyingi gap boshigacha bo'lgan vaqt ajratiladi
+                    val slotSec = ((units.getOrNull(index + 1)?.start ?: (unit.end + 1.0)) - unit.start).coerceAtLeast(0.3)
                     UnitCard(
                         unit = unit,
                         index = index,
                         vm = vm,
                         busy = busy,
+                        slotSec = slotSec,
+                        previewing = previewUnit == unit.id,
+                        preparing = previewUnit == unit.id && previewPhase?.startsWith("Ovoz tayyor") == true,
                         highlightSeq = seqMode && index == seqIndex,
                         onSeek = { seekMs = (unit.start * 1000).toLong(); seekTick++ },
                         onRecorded = {
@@ -303,6 +311,9 @@ private fun UnitCard(
     index: Int,
     vm: PipelineViewModel,
     busy: Boolean,
+    slotSec: Double,
+    previewing: Boolean,
+    preparing: Boolean,
     highlightSeq: Boolean,
     onSeek: () -> Unit,
     onRecorded: () -> Unit
@@ -384,9 +395,16 @@ private fun UnitCard(
                 IconButton(onClick = { vm.retranslateUnit(context, index) }, enabled = !busy && !recording) {
                     Icon(Icons.Default.Refresh, contentDescription = "Qayta tarjima")
                 }
-                // TTS preview
-                FilledTonalIconButton(onClick = { vm.previewVoice(context, text) }) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = "TTS tinglash")
+                // TTS preview: shu matn va shu rol bilan, dublyajdagidek
+                FilledTonalIconButton(
+                    onClick = { vm.togglePreview(context, unit.id, text, unit.voiceRole, slotSec) },
+                    enabled = !busy && !recording
+                ) {
+                    when {
+                        preparing -> CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        previewing -> Icon(Icons.Default.Stop, contentDescription = "To'xtatish")
+                        else -> Icon(Icons.Default.PlayArrow, contentDescription = "Tinglash")
+                    }
                 }
             }
 

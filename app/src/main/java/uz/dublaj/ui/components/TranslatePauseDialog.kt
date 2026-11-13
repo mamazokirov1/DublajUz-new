@@ -55,10 +55,10 @@ fun TranslatePauseDialog(
                     onValueChange = { newKey = it.trim() },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    label = { Text("Yangi API kalit (ixtiyoriy)") },
+                    label = { Text("Yana bir API kalit (ixtiyoriy)") },
                     visualTransformation = if (showKey) androidx.compose.ui.text.input.VisualTransformation.None
                     else PasswordVisualTransformation(),
-                    supportingText = { Text("Limit tugagan bo'lsa, boshqa kalit kiriting. Bo'sh qoldirsangiz eski kalit bilan qayta uriniladi.") }
+                    supportingText = { Text("Barcha kalitlar ishlamadi. Yangi kalit ro'yxatga qo'shiladi, eskilari saqlanadi. Bo'sh qoldirsangiz hamma kalit qayta sinab ko'riladi.") }
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(onClick = { showKey = !showKey }) { Text(if (showKey) "Kalitni yashirish" else "Kalitni ko'rsatish") }
@@ -71,7 +71,7 @@ fun TranslatePauseDialog(
         },
         confirmButton = {
             Button(onClick = { onContinue(newKey) }) {
-                Text(if (newKey.isNotBlank()) "Yangi kalit bilan davom etish" else "Qayta urinish")
+                Text(if (newKey.isNotBlank()) "Kalitni qo'shib davom etish" else "Qayta urinish")
             }
         },
         dismissButton = {

@@ -25,6 +25,7 @@ import uz.dublaj.translate.GeminiTranslator
 import uz.dublaj.translate.newTranslator
 import uz.dublaj.translate.provider
 import uz.dublaj.tts.ChatterboxClient
+import uz.dublaj.tts.SegmentCache
 import uz.dublaj.tts.VitsSynthesizer
 import uz.dublaj.util.FileUtils
 import uz.dublaj.util.SyncReport
@@ -399,6 +400,13 @@ class DubbingPipeline {
         var skipRest = false
         var onlineNote: String? = null
         var idx = 0
+        // Kalit limiti tugab, keyingisiga o'tilganda foydalanuvchiga ko'rsatamiz (dialog chiqmaydi)
+        fun watchKeys(t: GeminiTranslator) {
+            t.onKeySwitch = { n, total ->
+                progress(0.05f + 0.85f * idx / src.size, "Limit tugadi, $n/$total-kalitga o'tildi")
+            }
+        }
+        watchKeys(gem)
         try {
             while (idx < src.size) {
                 checkCancelled()
@@ -450,7 +458,9 @@ class DubbingPipeline {
                             when (val d = onProblem(e.message ?: "Noma'lum xato", online.size, src.size)) {
                                 is uz.dublaj.data.TranslateDecision.Retry -> {
                                     cfgNow = d.config
+                                    GeminiTranslator.resetCooldowns()
                                     gem = cfgNow.newTranslator()
+                                    watchKeys(gem)
                                     firstError = null
                                 }
                                 is uz.dublaj.data.TranslateDecision.Skip -> {
@@ -776,11 +786,30 @@ class DubbingPipeline {
         var cbFails = 0
         var cbOff = false
         var fallbacks = 0
+        // ---- kesh: matni, roli, sozlamalari va vaqti o'zgarmagan gaplar qayta ovozlanmaydi
+        val (vitsModel, vitsCfg) = VitsSynthesizer.modelFiles(dir)
+        val baseScale = 1f / config.voiceSpeed.coerceAtLeast(0.3f)
+        val canCompress = config.fitScale < baseScale
+        val vitsKey = listOf(
+            "v1", uz.dublaj.BuildConfig.VERSION_CODE, "vits",
+            SegmentCache.fileSig(vitsModel), SegmentCache.fileSig(vitsCfg),
+            config.voiceNoise, config.voiceNoiseW, config.fitScale, config.voicePause, config.voiceSpeed,
+            config.pronDict.hashCode()
+        ).joinToString("|")
+        val cbKey = listOf(
+            "v1", uz.dublaj.BuildConfig.VERSION_CODE, "cb", config.cbUrl, config.cbVoiceMode, SegmentCache.fileSig(cbRef)
+        ).joinToString("|")
+        val vitsCache = SegmentCache(dir.ttsCache, vitsKey)
+        val cbCache = SegmentCache(dir.ttsCache, cbKey)
+        var cacheHits = 0
+        var curPitch = 0f
         fun synthSeg(text: String, slot: Double): VitsSynthesizer.SegmentAudio {
             if (cb != null && !cbOff) {
+                cbCache.get(text, 0f, slot, slotDependent = false, canCompress = false)?.let { cacheHits++; return it }
                 try {
                     val r = cb.synthesize(text, cbRef)
                     cbFails = 0
+                    cbCache.put(text, 0f, slot, r, compressed = false)
                     return r
                 } catch (e: ChatterboxClient.ChatterboxException) {
                     cbFails++
@@ -790,11 +819,16 @@ class DubbingPipeline {
                     fallbacks++
                 }
             }
-            return vits().synthesize(text, slot)
+            vitsCache.get(text, curPitch, slot, slotDependent = true, canCompress = canCompress)?.let { cacheHits++; return it }
+            val synth = vits()
+            synth.pitchSemitones = curPitch
+            val r = synth.synthesize(text, slot)
+            vitsCache.put(text, curPitch, slot, r, compressed = r.lengthScale < baseScale - 1e-4f)
+            return r
         }
         try {
             active.forEachIndexed { i, u ->
-                progress(0.05f + 0.55f * i / active.size, "Ovozlashtirish ${i + 1}/${active.size}")
+                progress(0.05f + 0.55f * i / active.size, "Ovozlashtirish ${i + 1}/${active.size}" + if (cacheHits > 0) " (tayyor: $cacheHits)" else "")
                 val sStart = u.start + off
                 val sNext = active.getOrNull(i + 1)?.start?.plus(off)
                 // Haqiqiy bo'sh vaqt: oldingi klip tugashidan (kechikish bo'lsa) keyingi gap boshigacha
@@ -810,10 +844,7 @@ class DubbingPipeline {
                     Timber.i("Gap #${u.id}: foydalanuvchi ovozi")
                 } else {
                     // Erkak/ayol/bola izohi → pitch (taxminiy, alohida model emas)
-                    val rolePitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
-                    if (vitsOk) {
-                        try { vits().pitchSemitones = rolePitch } catch (_: Exception) {}
-                    }
+                    curPitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
                     seg = synthSeg(u.uzText, slot)
                 }
                 // Sig'masa: qisqaroq tarjima nomzodini sinaymiz (faqat foydalanuvchi matnni o'zgartirmagan bo'lsa)
@@ -851,6 +882,7 @@ class DubbingPipeline {
             }
         } finally {
             vitsSynth?.close()
+            try { vitsCache.prune() } catch (_: Exception) {}
         }
         if (clips.isEmpty()) throw IllegalStateException("Ovoz hosil bo'lmadi (matn bo'sh yoki o'qib bo'lmadi)")
 
@@ -893,6 +925,8 @@ class DubbingPipeline {
         val notes = ArrayList<String>()
         if (fast > 0) notes.add("$fast ta gap tezlashtirilgan")
         if (fallbacks > 0) notes.add("$fallbacks ta gap offline ovozda")
+        if (cacheHits > 0) notes.add("$cacheHits ta gap qayta ovozlanmadi")
+        SyncReport.add(context, "KESH: $cacheHits/${active.size} gap tayyor ovozdan olindi")
         val maxLag = lags.maxOrNull() ?: 0.0
         SyncReport.add(
             context,

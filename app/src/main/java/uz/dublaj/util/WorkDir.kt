@@ -22,6 +22,8 @@ class WorkDir(context: Context) {
     /** Tarjimaning tayyor qismi (to'xtab qolsa davom ettirish uchun). */
     val translatePartial get() = File(temp, "translate_partial.json")
     val approvedFlag get() = File(temp, "approved.flag")
+    /** Gap ovozlari keshi (faqat o'zgargan gaplar qayta ovozlanadi). */
+    val ttsCache get() = File(temp, "tts_cache")
     val extractedWav get() = File(temp, "extracted.wav")      // 16 kHz — Whisper uchun
     val mixWav get() = File(temp, "original_mix.wav")         // 22.05 kHz — aralashtirish uchun
     val refAutoWav get() = File(temp, "ref_auto.wav")         // videodan ajratilgan namuna ovoz (klonlash uchun)

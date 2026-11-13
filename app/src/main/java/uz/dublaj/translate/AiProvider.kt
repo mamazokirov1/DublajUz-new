@@ -137,6 +137,20 @@ fun AppConfig.provider(): AiProvider = AiProvider.byId(aiProvider)
 fun AppConfig.activeKey(): String =
     if (provider() == AiProvider.GEMINI) geminiKey else aiKeys[aiProvider].orEmpty()
 
+/** Maydonga bir nechta kalit yozish mumkin: probel, vergul, nuqta-vergul yoki yangi qator bilan ajratiladi. */
+fun splitApiKeys(raw: String): List<String> =
+    raw.split(Regex("[\\s,;]+")).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+/** Faol provayderdagi kalitlar soni. */
+fun AppConfig.activeKeyCount(): Int = splitApiKeys(activeKey()).size
+
+/** Yangi kalitni ro'yxat boshiga qo'shadi (eskilari saqlanadi, takrorlari olib tashlanadi). */
+fun AppConfig.withAddedKey(newKey: String): AppConfig {
+    val merged = (splitApiKeys(newKey) + splitApiKeys(activeKey())).distinct().joinToString(", ")
+    return if (provider() == AiProvider.GEMINI) copy(geminiKey = merged)
+    else copy(aiKeys = aiKeys + (aiProvider to merged))
+}
+
 fun AppConfig.activeModel(): String {
     val p = provider()
     val m = if (p == AiProvider.GEMINI) geminiModel else aiModels[aiProvider].orEmpty()
