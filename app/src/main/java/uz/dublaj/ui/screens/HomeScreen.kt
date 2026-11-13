@@ -166,6 +166,13 @@ fun HomeScreen(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let { vm.setVideo(it) }
     }
+    // Loyiha fayli (.dublaj): avval fayl, keyin shu loyiha videosi tanlanadi
+    val projectVideoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { vm.applyProject(context, it) }
+    }
+    val projectPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.loadProjectFile(context, it) { projectVideoPicker.launch("video/*") } }
+    }
 
     // Joriy bosqich
     val current = when {
@@ -417,6 +424,14 @@ fun HomeScreen(
                             Icon(Icons.Default.VideoLibrary, null, tint = cs.primary, modifier = Modifier.size(44.dp))
                             Text("Galereyadan video tanlash", style = MaterialTheme.typography.titleMedium)
                             Text("MP4, MOV, WebM", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                        }
+                        TextButton(
+                            onClick = { projectPicker.launch(arrayOf("*/*")) },
+                            enabled = !running
+                        ) {
+                            Icon(Icons.Default.FolderOpen, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Loyiha faylini ochish (.dublaj)")
                         }
                     } else {
                         videoUri?.let { VideoPlayer(it, Modifier.fillMaxWidth()) }

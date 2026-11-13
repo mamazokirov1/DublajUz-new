@@ -49,11 +49,14 @@ fun EditTranslationScreen(
     onBack: () -> Unit
 ) {
     val units by vm.translationUnits.collectAsState()
+    val context = LocalContext.current
+    val projectSaver = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(uz.dublaj.util.ProjectFile.MIME)
+    ) { uri: Uri? -> uri?.let { vm.exportProject(context, it) } }
     val previewUnit by vm.previewUnit.collectAsState()
     val previewPhase by vm.previewState.collectAsState()
     val videoUri by vm.videoUri.collectAsState()
     val busy by vm.busy.collectAsState()
-    val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val pending = units.count { it.check }
     val withVoice = units.count { it.hasUserVoice }
@@ -113,6 +116,7 @@ fun EditTranslationScreen(
                         "• ⋮ → Qidirish va almashtirish: ism yoki atamani hamma gapda birdan almashtiradi.\n" +
                         "• ⋮ → Spikerlar: gaplarni spikerlarga ajratib, ovozni spiker bo'yicha birdan berasiz.\n" +
                         "• Ommaviy o'zgarishdan keyin pastda «Qaytarish» chiqadi.\n" +
+                        "• ⋮ → Loyihani faylga saqlash: tarjima va sozlamalarni boshqa telefonda ochish uchun (video va API kalit kirmaydi).\n" +
                         "• «Keyingi muammo» tugmasi ⚠ belgili gapga o'tkazadi.\n" +
                         "• Mikrofon — o'z ovozingiz bilan yozish.\n" +
                         "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
@@ -207,6 +211,14 @@ fun EditTranslationScreen(
                                 text = { Text("Spikerlar…") },
                                 enabled = !busy,
                                 onClick = { menu = false; showSpeakers = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Loyihani faylga saqlash (.dublaj)") },
+                                enabled = !busy,
+                                onClick = {
+                                    menu = false
+                                    projectSaver.launch("loyiha.dublaj")
+                                }
                             )
                             HorizontalDivider()
                             Text(

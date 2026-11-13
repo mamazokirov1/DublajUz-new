@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import android.widget.VideoView
+import android.view.TextureView
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -32,6 +32,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
 import uz.dublaj.util.OutputUtils
 import java.io.File
 import kotlinx.coroutines.delay
@@ -77,6 +84,7 @@ private fun openExternal(ctx: Context, uri: Uri) {
     }
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun PlayerBody(
     uri: Uri,
@@ -91,8 +99,16 @@ private fun PlayerBody(
     val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
-    var view by remember { mutableStateOf<VideoView?>(null) }
+    // Dekoder ochilmasa dasturiy dekoderga o'tadi (ba'zi kodeklar VideoView'da ochilmasdi)
+    val player = remember(uri) {
+        ExoPlayer.Builder(ctx, DefaultRenderersFactory(ctx).setEnableDecoderFallback(true)).build().apply {
+            setMediaItem(MediaItem.fromUri(uri))
+            playWhenReady = false
+            prepare()
+        }
+    }
     var ready by remember { mutableStateOf(false) }
+    var startedOnce by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
     var duration by remember { mutableIntStateOf(0) }
     var pos by remember { mutableIntStateOf(0) }
@@ -107,21 +123,49 @@ private fun PlayerBody(
         } else subtitle
     }
 
-    LaunchedEffect(ready, playing) {
-        val v = view ?: return@LaunchedEffect
-        if (!ready) return@LaunchedEffect
-        try {
-            if (playing && !v.isPlaying) v.start()
-            else if (!playing && v.isPlaying) v.pause()
-        } catch (_: Exception) {
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY) {
+                    duration = player.duration.coerceAtLeast(0L).toInt()
+                    ready = true
+                    if (autoPlay && !startedOnce) {
+                        startedOnce = true
+                        playing = true
+                    }
+                } else if (state == Player.STATE_ENDED) {
+                    playing = false
+                    pos = 0
+                    player.pause()
+                    player.seekTo(0)
+                }
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    aspect = (videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height).coerceIn(0.5f, 2.4f)
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                failed = true
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            try { player.release() } catch (_: Exception) { }
         }
     }
+    LaunchedEffect(ready, playing) {
+        if (!ready) return@LaunchedEffect
+        try { player.playWhenReady = playing } catch (_: Exception) { }
+    }
     LaunchedEffect(ready, seekMs, seekToken) {
-        val v = view ?: return@LaunchedEffect
         val ms = seekMs ?: return@LaunchedEffect
         if (!ready) return@LaunchedEffect
         try {
-            v.seekTo(ms.toInt().coerceAtLeast(0))
+            player.seekTo(ms.coerceAtLeast(0L))
             pos = ms.toInt()
             playing = true
         } catch (_: Exception) {
@@ -129,16 +173,10 @@ private fun PlayerBody(
     }
     LaunchedEffect(ready) {
         while (ready) {
-            val v = view
-            if (v != null && !dragging) {
-                try { pos = v.currentPosition } catch (_: Exception) { }
+            if (!dragging) {
+                try { pos = player.currentPosition.toInt() } catch (_: Exception) { }
             }
             delay(120)
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            try { view?.stopPlayback() } catch (_: Exception) { }
         }
     }
     // Ilova fonga o'tganda (ekran o'chganda, boshqa ilovaga o'tilganda) video ovozi to'xtasin
@@ -147,7 +185,7 @@ private fun PlayerBody(
         val obs = LifecycleEventObserver { _, e ->
             if (e == Lifecycle.Event.ON_PAUSE) {
                 playing = false
-                try { view?.pause() } catch (_: Exception) { }
+                try { player.pause() } catch (_: Exception) { }
             }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
@@ -164,32 +202,11 @@ private fun PlayerBody(
             Modifier.fillMaxWidth().height(boxHeight),
             contentAlignment = Alignment.Center
         ) {
+            // TextureView: SurfaceView'dan farqli o'laroq, ro'yxat ichida siljiganda titramaydi.
+            // Kenglik/balandlik nisbati saqlanadi (cho'zilmaydi).
             AndroidView(
-                factory = { ctx ->
-                    VideoView(ctx).apply {
-                        setOnPreparedListener { mp ->
-                            duration = mp.duration
-                            if (mp.videoWidth > 0 && mp.videoHeight > 0) {
-                                aspect = (mp.videoWidth.toFloat() / mp.videoHeight).coerceIn(0.5f, 2.4f)
-                            }
-                            ready = true
-                            seekTo(1)
-                            if (autoPlay) playing = true
-                        }
-                        setOnCompletionListener {
-                            playing = false
-                            pos = 0
-                            seekTo(1)
-                        }
-                        setOnErrorListener { _, _, _ ->
-                            failed = true
-                            true
-                        }
-                        setVideoURI(uri)
-                        view = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
+                factory = { c -> TextureView(c).also { player.setVideoTextureView(it) } },
+                modifier = Modifier.fillMaxHeight().aspectRatio(aspect, matchHeightConstraintsFirst = true)
             )
             Box(
                 Modifier.fillMaxSize().clickable(enabled = ready) { playing = !playing },
@@ -276,7 +293,7 @@ private fun PlayerBody(
                 },
                 onValueChangeFinished = {
                     dragging = false
-                    try { view?.seekTo(pos) } catch (_: Exception) {}
+                    try { player.seekTo(pos.toLong()) } catch (_: Exception) {}
                 },
                 modifier = Modifier.weight(1f),
                 enabled = ready

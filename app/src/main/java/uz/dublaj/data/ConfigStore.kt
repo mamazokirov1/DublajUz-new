@@ -26,6 +26,7 @@ object ConfigStore {
             fitScale = sp.getFloat("fitScale", d.fitScale),
             duckAmount = sp.getFloat("duckAmount", d.duckAmount),
             levelClips = sp.getBoolean("levelClips", d.levelClips),
+            softTransitions = sp.getBoolean("softTransitions", d.softTransitions),
             audioQuality = sp.getInt("audioQuality", d.audioQuality),
             rolePitchMale = sp.getFloat("rolePitchMaleV2", d.rolePitchMale),
             rolePitchFemale = sp.getFloat("rolePitchFemaleV2", d.rolePitchFemale),
@@ -103,6 +104,7 @@ object ConfigStore {
             .putFloat("fitScale", c.fitScale)
             .putFloat("duckAmount", c.duckAmount)
             .putBoolean("levelClips", c.levelClips)
+            .putBoolean("softTransitions", c.softTransitions)
             .putInt("audioQuality", c.audioQuality)
             .putFloat("rolePitchMaleV2", c.rolePitchMale)
             .putFloat("rolePitchFemaleV2", c.rolePitchFemale)

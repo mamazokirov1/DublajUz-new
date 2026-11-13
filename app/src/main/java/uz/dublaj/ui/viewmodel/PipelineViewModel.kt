@@ -45,6 +45,7 @@ import uz.dublaj.data.UsageStore
 import uz.dublaj.monetization.BillingManager
 import uz.dublaj.monetization.AdsManager
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import java.io.File
 
 /** Yagona (Activity darajasidagi) ViewModel: barcha ekranlar shu nusxani ulashadi. */
@@ -229,6 +230,14 @@ class PipelineViewModel : ViewModel() {
             _hasTranscript.value = r.hasTranscript
             _translationUnits.value = r.units
             _approved.value = r.approved
+            if (r.dubInterrupted && r.approved) {
+                // Xabar ekran tinglay boshlagach yuboriladi (ilova endi ochilganda yo'qolib ketmasin)
+                viewModelScope.launch {
+                    _events.subscriptionCount.first { it > 0 }
+                    kotlinx.coroutines.delay(600)
+                    toast("Oldingi dublyaj tugamay qolgan edi. «Dublyaj»ni qayta bosing: tayyor gaplar qayta ovozlanmaydi.")
+                }
+            }
             val partial = withContext(Dispatchers.IO) { pipeline.translatePartialInfo(app) }
             _translateResume.value = if (r.units.isEmpty()) partial?.let { "${it.first}/${it.second}" } else null
         }
@@ -495,6 +504,84 @@ class PipelineViewModel : ViewModel() {
         list[index] = list[index].copy(uzText = newText, check = false, issue = null)
         _translationUnits.value = list
         _approved.value = false
+    }
+
+    // ------------------------------------------------------------------ loyiha fayli (.dublaj)
+
+    private var pendingProject: uz.dublaj.util.ProjectFile.Data? = null
+
+    /** Tahrir ekranidan: hozirgi tarjima, rol va sozlamalarni fayl sifatida yozadi. */
+    fun exportProject(context: Context, uri: Uri) {
+        val app = context.applicationContext
+        val units = _translationUnits.value
+        if (units.isEmpty()) { toast("Saqlanadigan tarjima yo'q"); return }
+        val cfg = _config.value
+        val title = _videoUri.value?.let { FileUtils.displayName(app, it) } ?: ""
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val text = uz.dublaj.util.ProjectFile.toJson(title, cfg, units)
+                    app.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                        ?: throw IllegalStateException("Fayl ochilmadi")
+                }
+                toast("Loyiha saqlandi ✓ (${units.size} gap). Video faylga kirmaydi.")
+            } catch (e: Exception) {
+                Timber.w(e, "exportProject")
+                toast("Loyihani saqlab bo'lmadi: ${e.message}")
+            }
+        }
+    }
+
+    /** Home: loyiha faylini o'qiydi. Muvaffaqiyatli bo'lsa [onReady] chaqiriladi (keyin video tanlanadi). */
+    fun loadProjectFile(context: Context, uri: Uri, onReady: () -> Unit) {
+        if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
+        val app = context.applicationContext
+        viewModelScope.launch {
+            try {
+                val data = withContext(Dispatchers.IO) {
+                    val text = app.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                        ?: throw IllegalArgumentException("Fayl ochilmadi")
+                    uz.dublaj.util.ProjectFile.parse(text)
+                }
+                pendingProject = data
+                toast("Loyiha o'qildi: ${data.units.size} gap${if (data.title.isNotBlank()) " (${data.title})" else ""}. Endi shu videoni tanlang.")
+                onReady()
+            } catch (e: IllegalArgumentException) {
+                toast(e.message ?: "Loyihani o'qib bo'lmadi")
+            } catch (e: Exception) {
+                Timber.w(e, "loadProjectFile")
+                toast("Loyihani o'qib bo'lmadi: ${e.message}")
+            }
+        }
+    }
+
+    /** Loyiha + tanlangan video: video nusxalanadi, gaplar yuklanadi; tasdiqlash qoladi (qayta tasdiqlang). */
+    fun applyProject(context: Context, videoUri: Uri) {
+        val data = pendingProject ?: return
+        if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
+        val app = context.applicationContext
+        setVideo(videoUri)
+        launchTask(app, "Loyiha ochilmoqda") {
+            withContext(Dispatchers.IO) {
+                _state.value = PipelineState.Running("Loyiha ochilmoqda", 0.1f, "Video nusxalanmoqda…")
+                pipeline.attachVideo(app, videoUri)
+                pipeline.clearApproval(app)
+            }
+            if (_videoUri.value != videoUri) {
+                // masalan, bepul versiyada video juda uzun bo'lib, rad etilgan
+                _state.value = PipelineState.Idle
+                return@launchTask
+            }
+            val cfg = uz.dublaj.util.ProjectFile.applySettings(_config.value, data.settings)
+            setConfig(cfg)
+            undoStack.clear()
+            _translationUnits.value = data.units
+            _approved.value = false
+            withContext(Dispatchers.IO) { pipeline.saveTranslation(app, data.units) }
+            pendingProject = null
+            _state.value = PipelineState.Idle
+            toast("Loyiha ochildi ✓ Tekshirib, «Tasdiqlash» va «Dublyaj» ni bosing.")
+        }
     }
 
     // ------------------------------------------------------------------ bekor qilish (Undo)
@@ -1045,6 +1132,27 @@ class PipelineViewModel : ViewModel() {
 
     suspend fun usedBytes(context: Context): Long =
         withContext(Dispatchers.IO) { pipeline.usedBytes(context.applicationContext) }
+
+    suspend fun cacheBytes(context: Context): Long =
+        withContext(Dispatchers.IO) { pipeline.ttsCacheBytes(context.applicationContext) }
+
+    /** Faqat ovoz keshini tozalaydi (loyiha saqlanadi); keyingi dublyajda hamma gap qayta ovozlanadi. */
+    fun clearVoiceCache(context: Context) {
+        if (isBusy) {
+            toast("Hozir jarayon ketyapti. Avval uni tugating yoki bekor qiling.")
+            return
+        }
+        val app = context.applicationContext
+        viewModelScope.launch {
+            val before = withContext(Dispatchers.IO) {
+                val b = pipeline.ttsCacheBytes(app)
+                pipeline.clearTtsCache(app)
+                b
+            }
+            _workVersion.update { it + 1 }
+            toast(if (before > 0) "Ovoz keshi tozalandi ✓ ${mb(before)} bo'shatildi" else "Kesh bo'sh ✓")
+        }
+    }
 
     // ------------------------------------------------------------------ ichki
 

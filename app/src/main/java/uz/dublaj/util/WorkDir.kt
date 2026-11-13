@@ -22,6 +22,8 @@ class WorkDir(context: Context) {
     /** Tarjimaning tayyor qismi (to'xtab qolsa davom ettirish uchun). */
     val translatePartial get() = File(temp, "translate_partial.json")
     val approvedFlag get() = File(temp, "approved.flag")
+    /** Dublyaj ketayotganda turadi: ilova o'ldirilsa qolib ketadi (keyin «to'xtab qolgan» deb bilamiz). */
+    val dubRunningFlag get() = File(temp, "dub_running.flag")
     /** Gap ovozlari keshi (faqat o'zgargan gaplar qayta ovozlanadi). */
     val ttsCache get() = File(temp, "tts_cache")
     val extractedWav get() = File(temp, "extracted.wav")      // 16 kHz — Whisper uchun
@@ -48,6 +50,12 @@ class WorkDir(context: Context) {
         input.listFiles()?.forEach { it.deleteRecursively() }
         temp.listFiles()?.forEach { it.deleteRecursively() }
     }
+
+    /** Gap ovozlari keshi hajmi. */
+    fun ttsCacheBytes(): Long = dirSize(ttsCache)
+
+    /** Faqat ovoz keshini o'chiradi: transkript, tarjima va tasdiq saqlanadi. */
+    fun clearTtsCache() { ttsCache.deleteRecursively() }
 
     fun usedBytes(): Long = listOf(input, temp).sumOf { dirSize(it) }
 

@@ -62,6 +62,8 @@ data class AppConfig(
     val duckAmount: Float = 0.2f,
     /** Har bir klip balandligini tenglash. */
     val levelClips: Boolean = true,
+    /** Gaplar chetida uzunroq so'nish/ko'tarilish va asl ovozning yumshoq qaytishi (qirqilgandek eshitilmasin). */
+    val softTransitions: Boolean = true,
     /** Chiqish audio sifati: 0 = standart (22.05 kHz, 96 kbps), 1 = yuqori (44.1 kHz, 160 kbps). */
     val audioQuality: Int = 0,
     /** Gap izohiga qarab ovoz balandligi siljishi (yarim ton). */

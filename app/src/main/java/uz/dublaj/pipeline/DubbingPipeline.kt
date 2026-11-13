@@ -155,13 +155,19 @@ class DubbingPipeline {
 
     fun usedBytes(context: Context): Long = ensure(context).usedBytes()
 
+    fun ttsCacheBytes(context: Context): Long = ensure(context).ttsCacheBytes()
+
+    fun clearTtsCache(context: Context) { ensure(context).clearTtsCache() }
+
     // ------------------------------------------------------------------ tiklash
 
     data class Restored(
         val videoFile: File?,
         val hasTranscript: Boolean,
         val units: List<TranslationUnit>,
-        val approved: Boolean
+        val approved: Boolean,
+        /** Oldingi dublyaj tugamay (ilova yopilib) qolgan. */
+        val dubInterrupted: Boolean = false
     )
 
     /** Ilova qayta ochilganda (process o'ldirilgan bo'lsa) holatni diskdan tiklaydi. */
@@ -180,7 +186,17 @@ class DubbingPipeline {
         }
         localVideo = video
         val units = loadTranslation(context)
-        return Restored(video, hasTranscript && video != null, units, dir.approvedFlag.isFile && units.isNotEmpty())
+        val interrupted = dir.dubRunningFlag.isFile
+        if (interrupted) dir.dubRunningFlag.delete()
+        return Restored(video, hasTranscript && video != null, units, dir.approvedFlag.isFile && units.isNotEmpty(), interrupted)
+    }
+
+    /** Loyiha ochilganda: videoni STT qilmasdan ish papkasiga nusxalaydi (dublyaj uchun yetadi). */
+    fun attachVideo(context: Context, uri: Uri): File {
+        val dir = ensure(context)
+        val f = prepareVideo(context, uri, dir)
+        localVideo = f
+        return f
     }
 
     private fun prepareVideo(context: Context, uri: Uri, dir: WorkDir): File {
@@ -707,6 +723,22 @@ class DubbingPipeline {
         title: String = "",
         onProgress: (Float, String) -> Unit
     ): File {
+        val flag = ensure(context).dubRunningFlag
+        try { flag.writeText(System.currentTimeMillis().toString()) } catch (_: Exception) {}
+        try {
+            return dubInternal(context, units, config, title, onProgress)
+        } finally {
+            try { flag.delete() } catch (_: Exception) {}
+        }
+    }
+
+    private fun dubInternal(
+        context: Context,
+        units: List<TranslationUnit>,
+        config: AppConfig,
+        title: String,
+        onProgress: (Float, String) -> Unit
+    ): File {
         val progress = wrap(onProgress)
         val dir = ensure(context)
         val outSr = config.outSampleRate
@@ -754,7 +786,8 @@ class DubbingPipeline {
             maxSpeed = config.maxAtempo,
             marginSec = config.marginS.toDouble(),
             gapSec = config.gapS.toDouble(),
-            clipDir = dir.temp
+            clipDir = dir.temp,
+            fadeMs = if (config.softTransitions) 30 else 12
         )
         val clips = ArrayList<SegmentPlacer.Clip>()
         val usedText = HashMap<Int, String>()
@@ -902,7 +935,8 @@ class DubbingPipeline {
             val origRanges = active.map { a ->
                 Pair((maxOf(0.0, a.start - 0.05) * outSr).toLong(), (a.end * outSr).toLong())
             }
-            DubMixer(outSr, WavFile(dir.mixWav), clips, config.originalVolume, config.uzbekVolume, config.duckAmount, origRanges).use { mixer ->
+            DubMixer(outSr, WavFile(dir.mixWav), clips, config.originalVolume, config.uzbekVolume, config.duckAmount, origRanges,
+                releaseMs = if (config.softTransitions) 450.0 else 250.0).use { mixer ->
                 VideoMuxer.mux(video, outFile, outSr, totalSamples, mixer, config.outAudioBitrate) { p ->
                     progress(0.72f + 0.27f * p, "Video yig'ilmoqda…")
                 }

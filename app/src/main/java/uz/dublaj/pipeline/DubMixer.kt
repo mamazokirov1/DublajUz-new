@@ -21,7 +21,9 @@ class DubMixer(
     /** Dublaj gapirganda asl ovoz ko'paytmasi (1 = pasaytirmaslik). */
     private val duckGain: Float = 1f,
     /** Asl nutq oralig'i (sample, [sr] chastotada): shu vaqtda ham asl ovoz pasaytiriladi. */
-    origSpeech: List<Pair<Long, Long>> = emptyList()
+    origSpeech: List<Pair<Long, Long>> = emptyList(),
+    /** Dublaj tugagach asl ovoz qanchalik sekin qaytadi (ms). Kattaroq = yumshoqroq. */
+    private val releaseMs: Double = 250.0
 ) : Closeable {
 
     private val rStart: LongArray
@@ -51,7 +53,7 @@ class DubMixer(
     private val active = ArrayList<Active>()
     private var gain = 1f
     private val attack = (1.0 - Math.exp(-1.0 / (sr * 0.03))).toFloat()
-    private val release = (1.0 - Math.exp(-1.0 / (sr * 0.25))).toFloat()
+    private val release = (1.0 - Math.exp(-1.0 / (sr * releaseMs / 1000.0))).toFloat()
 
     fun mix(startSample: Long, count: Int): ShortArray {
         val out = FloatArray(count)

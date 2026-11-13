@@ -75,9 +75,11 @@ fun SettingsScreen(
     var showProDialog by remember { mutableStateOf(false) }
 
     var usedMb by remember { mutableStateOf(0L) }
+    var cacheMb by remember { mutableStateOf(0L) }
     LaunchedEffect(status, workVersion) {
         vm.refreshModels(context)
         usedMb = vm.usedBytes(context) / (1024 * 1024)
+        cacheMb = vm.cacheBytes(context) / (1024 * 1024)
     }
 
     val whisperPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -895,13 +897,18 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                 )
 
-                if (expert) {
-                    HelpSlider(
-                        "Gapirganda asl ovoz", "${(config.duckAmount * 100).roundToInt()}%",
-                        "Dublyaj gapirayotganda asl ovoz shu darajagacha pasayadi. 100% degani pasaytirilmaydi.",
-                        config.duckAmount, 0f..1f
-                    ) { vm.setConfig(config.copy(duckAmount = it)) }
+                HelpSlider(
+                    "Fon musiqasi gapirganda", "${(config.duckAmount * 100).roundToInt()}%",
+                    "Dublyaj gapirayotganda asl ovoz va musiqa avtomatik shu darajagacha pasayadi. 100% degani pasaytirilmaydi.",
+                    config.duckAmount, 0f..1f
+                ) { vm.setConfig(config.copy(duckAmount = it)) }
 
+                SwitchRow(
+                    "Yumshoq o'tish", "Gaplar boshi-oxiri va fon ovozining qaytishi silliqroq bo'ladi (qirqilgandek eshitilmaydi).",
+                    config.softTransitions
+                ) { vm.setConfig(config.copy(softTransitions = it)) }
+
+                if (expert) {
                     HelpSlider(
                         "Maks. tezlashtirish", "${"%.2f".format(config.maxAtempo)}×",
                         "Gap baribir sig'masa, tayyor ovoz shu tezlikkacha tezlashtiriladi. Past qiymat tabiiyroq, lekin gaplar ustma-ust tushishi mumkin.",
@@ -1083,6 +1090,20 @@ fun SettingsScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("Vaqtinchalik fayllarni tozalash")
                 }
+                OutlinedButton(
+                    onClick = { vm.clearVoiceCache(context) },
+                    enabled = !busy && cacheMb > 0,
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.DeleteSweep, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Faqat ovoz keshini tozalash ($cacheMb MB)")
+                }
+                Text(
+                    "Ovoz keshi — tayyor gap ovozlari: tahrirdan keyin faqat o'zgargan gaplar qayta ovozlanadi. " +
+                        "Tozalasangiz loyiha saqlanadi, lekin keyingi dublyaj sekinroq bo'ladi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
                 if (busy) {
                     Text(
                         "Jarayon ketayotganda tozalab bo'lmaydi. Tugashini kuting yoki bekor qiling.",
