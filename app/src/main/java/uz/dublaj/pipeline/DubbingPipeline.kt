@@ -26,6 +26,8 @@ import uz.dublaj.translate.newTranslator
 import uz.dublaj.translate.provider
 import uz.dublaj.tts.ChatterboxClient
 import uz.dublaj.tts.SegmentCache
+import uz.dublaj.tts.gemVoiceFor
+import uz.dublaj.tts.useGeminiTts
 import uz.dublaj.tts.VitsSynthesizer
 import uz.dublaj.util.FileUtils
 import uz.dublaj.util.SyncReport
@@ -745,7 +747,11 @@ class DubbingPipeline {
         if (!dir.approvedFlag.isFile) throw IllegalStateException("Tarjima tasdiqlanmagan")
         val useCb = config.chatterboxReady
         val vitsOk = VitsSynthesizer.isReady(dir)
-        if (!useCb && !vitsOk) {
+        val useGem = config.useGeminiTts()
+        if (config.ttsEngine == "gemini" && !useGem && !vitsOk && !useCb) {
+            throw IllegalStateException("Gemini ovozi uchun Gemini API kaliti kerak: Sozlamalar → Tarjima (AI) da kalitni kiriting.")
+        }
+        if (!useCb && !vitsOk && !useGem) {
             throw IllegalStateException(
                 "O'zbekcha ovoz komponenti yo'q. Sozlamalarda ovoz fayllarini (.onnx va .json) qo'shing."
             )
@@ -799,7 +805,11 @@ class DubbingPipeline {
             "--- DUBLAJ: siljish=${SyncReport.sf(off)} s, maxAtempo=${config.maxAtempo}, fitScale=${config.fitScale}, gap=${config.gapS}, margin=${config.marginS} ---"
         )
 
-        progress(0.02f, if (useCb) "Chatterbox serveriga ulanilmoqda…" else "Ovoz komponenti yuklanmoqda…")
+        progress(0.02f, when {
+            useGem -> "Gemini ovozi ishlatiladi…"
+            useCb -> "Chatterbox serveriga ulanilmoqda…"
+            else -> "Ovoz komponenti yuklanmoqda…"
+        })
         var vitsSynth: VitsSynthesizer? = null
         fun vits(): VitsSynthesizer {
             vitsSynth?.let { return it }
@@ -836,9 +846,59 @@ class DubbingPipeline {
         ).joinToString("|")
         val vitsCache = SegmentCache(dir.ttsCache, vitsKey)
         val cbCache = SegmentCache(dir.ttsCache, cbKey)
+        // ---- Gemini TTS (onlayn, yuqori sifat): ovoz nomi kesh kalitiga kiradi
+        val gem = if (useGem) uz.dublaj.tts.GeminiTtsClient(config.geminiKey, config.gemTtsModel) else null
+        val gemCache = SegmentCache(
+            dir.ttsCache,
+            listOf("v1", uz.dublaj.BuildConfig.VERSION_CODE, "gem", config.gemTtsModel).joinToString("|")
+        )
+        var gemFails = 0
+        var gemOff = false
+        var gemCalls = 0
+        var curRole = ""
         var cacheHits = 0
         var curPitch = 0f
+        // Ko'p spikerli model: erkak/ayol/bola alohida spiker bilan o'qiladi (ton siljitish ishlatilmaydi)
+        val spk = VitsSynthesizer.readSpeakers(dir)
+        var curSid = -1
         fun synthSeg(text: String, slot: Double): VitsSynthesizer.SegmentAudio {
+            if (gem != null && !gemOff) {
+                val voice = config.gemVoiceFor(curRole)
+                val prepared = uz.dublaj.tts.GeminiTtsClient.prepare(norm, text)
+                val tight = slot * 1.15
+                try {
+                    var base = gemCache.get(text, 0f, slot, slotDependent = false, canCompress = false, variant = voice)
+                    if (base != null && base.durationSec <= tight) { cacheHits++; return base }
+                    val fastCached = gemCache.get(text, 0f, slot, slotDependent = false, canCompress = false, variant = "$voice|fast")
+                    if (fastCached != null) { cacheHits++; return fastCached }
+                    if (base == null) {
+                        base = gem.synthesize(prepared, voice)
+                        gemCalls++
+                        gemCache.put(text, 0f, slot, base, compressed = false, variant = voice)
+                    }
+                    gemFails = 0
+                    // Sig'masa: tezroq o'qish uslubi bilan bir marta qayta so'raymiz (WSOLA tezlashtirishdan tabiiyroq)
+                    if (base.durationSec > tight) {
+                        try {
+                            val fast = gem.synthesize(prepared, voice, "speaking rapidly")
+                            gemCalls++
+                            if (fast.durationSec < base.durationSec * 0.95) {
+                                gemCache.put(text, 0f, slot, fast, compressed = false, variant = "$voice|fast")
+                                return fast
+                            }
+                        } catch (e: uz.dublaj.tts.GeminiTtsClient.TtsException) {
+                            Timber.w("Gemini tez uslub: ${e.message}")
+                        }
+                    }
+                    return base
+                } catch (e: uz.dublaj.tts.GeminiTtsClient.TtsException) {
+                    gemFails++
+                    Timber.w("Gemini TTS xato ($gemFails): ${e.message}")
+                    if (!vitsOk && !(cb != null && !cbOff)) throw IllegalStateException("Gemini ovozi: ${e.message}")
+                    if (gemFails >= 3 || e.fatal) gemOff = true
+                    fallbacks++
+                }
+            }
             if (cb != null && !cbOff) {
                 cbCache.get(text, 0f, slot, slotDependent = false, canCompress = false)?.let { cacheHits++; return it }
                 try {
@@ -854,11 +914,13 @@ class DubbingPipeline {
                     fallbacks++
                 }
             }
-            vitsCache.get(text, curPitch, slot, slotDependent = true, canCompress = canCompress)?.let { cacheHits++; return it }
+            val variant = if (curSid >= 0) "sid$curSid" else ""
+            vitsCache.get(text, curPitch, slot, slotDependent = true, canCompress = canCompress, variant = variant)?.let { cacheHits++; return it }
             val synth = vits()
             synth.pitchSemitones = curPitch
+            synth.speakerId = if (curSid >= 0) curSid else null
             val r = synth.synthesize(text, slot)
-            vitsCache.put(text, curPitch, slot, r, compressed = r.lengthScale < baseScale - 1e-4f)
+            vitsCache.put(text, curPitch, slot, r, compressed = r.lengthScale < baseScale - 1e-4f, variant = variant)
             return r
         }
         try {
@@ -879,7 +941,14 @@ class DubbingPipeline {
                     Timber.i("Gap #${u.id}: foydalanuvchi ovozi")
                 } else {
                     // Erkak/ayol/bola izohi → pitch (taxminiy, alohida model emas)
-                    curPitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
+                    if (spk.isNotEmpty()) {
+                        curSid = spk[u.voiceRole] ?: spk[""] ?: spk.values.first()
+                        curPitch = config.voicePitch
+                    } else {
+                        curSid = -1
+                        curPitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
+                    }
+                    curRole = u.voiceRole
                     seg = synthSeg(u.uzText, slot)
                 }
                 // Sig'masa: qisqaroq tarjima nomzodini sinaymiz (faqat foydalanuvchi matnni o'zgartirmagan bo'lsa)
@@ -894,7 +963,7 @@ class DubbingPipeline {
                         }
                     }
                 }
-                val resampled = StreamResampler.resample(seg.pcm, seg.sampleRate, outSr)
+                val resampled = uz.dublaj.util.HqResample.resample(seg.pcm, seg.sampleRate, outSr)
                 val pcm = if (config.levelClips) uz.dublaj.util.AudioLevel.level(resampled) else resampled
                 placer.place(u.id, sStart, sNext, pcm)?.let { c ->
                     clips.add(c)
@@ -917,7 +986,12 @@ class DubbingPipeline {
             }
         } finally {
             vitsSynth?.close()
-            try { vitsCache.prune() } catch (_: Exception) {}
+            try { vitsCache.prune(); gemCache.prune() } catch (_: Exception) {}
+            // Model bilmaydigan belgilar jim tashlangan bo'lsa — hisobotga yozamiz (talaffuz muammosi sababi)
+            if (VitsSynthesizer.dropped.isNotEmpty()) {
+                SyncReport.add(context, "TASHLANGAN BELGILAR (modelga noma'lum): " + VitsSynthesizer.dropped.joinToString(" ") { "'$it'(U+%04X)".format(it.code) })
+                VitsSynthesizer.dropped.clear()
+            }
         }
         if (clips.isEmpty()) throw IllegalStateException("Ovoz hosil bo'lmadi (matn bo'sh yoki o'qib bo'lmadi)")
 
@@ -962,6 +1036,7 @@ class DubbingPipeline {
         if (fast > 0) notes.add("$fast ta gap tezlashtirilgan")
         if (fallbacks > 0) notes.add("$fallbacks ta gap offline ovozda")
         if (cacheHits > 0) notes.add("$cacheHits ta gap qayta ovozlanmadi")
+        if (useGem) SyncReport.add(context, "OVOZ: Gemini (${config.gemTtsModel}), so'rovlar=$gemCalls, zaxira(ONNX/CB)=$fallbacks")
         SyncReport.add(context, "KESH: $cacheHits/${active.size} gap tayyor ovozdan olindi")
         val maxLag = lags.maxOrNull() ?: 0.0
         SyncReport.add(

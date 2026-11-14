@@ -688,6 +688,91 @@ fun SettingsScreen(
                 }
             }
 
+            // ---------------- ovoz dvigateli (oflayn ONNX yoki Gemini)
+            val gemOn = config.ttsEngine == "gemini"
+            val gemSample = "Salom! Bugun havo juda yaxshi. Qo'shnimning o'g'li xushxabar keltirdi."
+            // Ilova bepul/oflayn bo'lishi kerak: pullik bo'lishi mumkin bo'lgan Gemini ovozi faqat Mutaxassis rejimida ko'rinadi
+            if (expert) SectionCard(
+                icon = Icons.Default.RecordVoiceOver,
+                title = "Ovoz dvigateli (ixtiyoriy)",
+                subtitle = if (gemOn) "Gemini (onlayn, pullik bo'lishi mumkin)" else "Oflayn (ONNX) — bepul",
+                initiallyExpanded = true
+            ) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    FilterChip(
+                        selected = !gemOn,
+                        onClick = { vm.setConfig(config.copy(ttsEngine = "onnx")) },
+                        label = { Text("Oflayn (ONNX)") }
+                    )
+                    FilterChip(
+                        selected = gemOn,
+                        onClick = { vm.setConfig(config.copy(ttsEngine = "gemini")) },
+                        label = { Text("Gemini (yuqori sifat)") }
+                    )
+                }
+                if (!gemOn) {
+                    Text(
+                        "Telefonda internetsiz ishlaydi, lekin ovoz sifati o'rnatilgan model fayliga bog'liq.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        "Gemini TTS o'zbek tilini rasman qo'llab-quvvatlaydi va odatda ONNX modelidan ancha tabiiy o'qiydi. " +
+                            "Internet kerak. Ovoz sizning Gemini kalitingiz hisobidan ishlaydi (narx va limitlarni Google AI Studio'da tekshiring). " +
+                            "Matn Google serverlariga yuboriladi. Ovozlar tayyor, birovning ovozi klonlanmaydi.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                    if (config.geminiKey.isBlank()) {
+                        Text(
+                            "⚠ Gemini API kaliti kerak: «Tarjima (AI)» bo'limida Gemini kalitini kiriting. Kalit bo'lmasa, ONNX ishlatiladi.",
+                            style = MaterialTheme.typography.bodySmall, color = cs.tertiary
+                        )
+                    }
+                    Text("Model", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        FilterChip(
+                            selected = config.gemTtsModel == "gemini-3.8-flash-lite-tts",
+                            onClick = { vm.setConfig(config.copy(gemTtsModel = "gemini-3.8-flash-lite-tts")) },
+                            label = { Text("Tez va arzon") }
+                        )
+                        FilterChip(
+                            selected = config.gemTtsModel == "gemini-3.8-flash-tts",
+                            onClick = { vm.setConfig(config.copy(gemTtsModel = "gemini-3.8-flash-tts")) },
+                            label = { Text("Eng sifatli") }
+                        )
+                    }
+                    @Composable
+                    fun voiceRow(title: String, role: String, current: String, options: List<String>, set: (String) -> Unit) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                            TextButton(
+                                onClick = { vm.previewVoice(context, gemSample, role) },
+                                enabled = !busy && config.geminiKey.isNotBlank()
+                            ) { Text("▶ Tinglash") }
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            options.forEach { v ->
+                                FilterChip(selected = current == v, onClick = { set(v) }, label = { Text(v) })
+                            }
+                        }
+                    }
+                    voiceRow("Erkak ovozi", "erkak", config.gemVoiceMale, listOf("Charon", "Orus", "Puck", "Alnilam")) {
+                        vm.setConfig(config.copy(gemVoiceMale = it))
+                    }
+                    voiceRow("Ayol ovozi", "ayol", config.gemVoiceFemale, listOf("Kore", "Aoede", "Leda", "Sulafat")) {
+                        vm.setConfig(config.copy(gemVoiceFemale = it))
+                    }
+                    voiceRow("Bola ovozi (yoshroq ohang)", "bola", config.gemVoiceChild, listOf("Leda", "Puck", "Zephyr", "Aoede")) {
+                        vm.setConfig(config.copy(gemVoiceChild = it))
+                    }
+                    Text(
+                        "Gemini ovozlarida ton siljitish ishlatilmaydi: erkak/ayol/bola gaplari tanlangan ovozlar bilan o'qiladi. " +
+                            "Internet uzilsa yoki limit tugasa, ONNX modeli bo'lsa, o'shanga o'tiladi.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                }
+            }
+
             // ---------------- ovoz sifati
             var sample by remember {
                 mutableStateOf("Assalomu alaykum! Bu ovoz sinovi. Tabiiy chiqayotganini tinglab ko'ring.")

@@ -34,9 +34,22 @@ class VitsSynthesizer(
     private var minLengthScale: Float,
     private val maxChars: Int,
     private var pauseS: Float,
-    private val normalizer: TextNormalizer
+    private val normalizer: TextNormalizer,
+    /** Model belgilari jadvali (uz_tts_base.json "symbols"); bo'lmasa eski standart jadval. */
+    private val symbolToId: Map<Char, Int> = DEFAULT_SYMBOL_TO_ID,
+    /** Ko'p spikerli model: rol -> spiker raqami (uz_tts_base.json "speakers"). */
+    private val speakers: Map<String, Int> = emptyMap(),
+    private val hasSid: Boolean = false
 ) {
     private val closed = AtomicBoolean(false)
+
+    /** Ko'p spikerli modelda hozir ishlatiladigan spiker (null = 0). */
+    @Volatile var speakerId: Int? = null
+
+    /** Rolga mos spiker raqami; model bir spikerli bo'lsa null (u holda rol ton siljitish bilan beriladi). */
+    fun speakerIdFor(role: String): Int? =
+        if (!hasSid || speakers.isEmpty()) null
+        else speakers[role] ?: speakers[""] ?: speakers.values.firstOrNull()
 
     /** length_scale boshlang'ich qiymati (1 / nutq tezligi). */
     @Volatile private var baseScale = 1.0f
@@ -157,19 +170,20 @@ class VitsSynthesizer(
         val pauseShort = ShortArray((sampleRate * pauseS * 0.5f).toInt())
 
         chunks.forEachIndexed { i, chunk ->
-            val ids = textToIds(chunk, addBlank)
+            val ids = textToIds(chunk, addBlank, symbolToId)
             if (ids.isEmpty()) return@forEachIndexed
 
             val x = Array(1) { ids }
             val xLen = longArrayOf(ids.size.toLong())
 
-            val inputs = mapOf(
-                "x" to OnnxTensor.createTensor(env, x),
-                "x_lengths" to OnnxTensor.createTensor(env, xLen),
-                "noise_scale" to OnnxTensor.createTensor(env, floatArrayOf(noiseScale)),
-                "noise_scale_w" to OnnxTensor.createTensor(env, floatArrayOf(noiseScaleW)),
-                "length_scale" to OnnxTensor.createTensor(env, floatArrayOf(lengthScale))
-            )
+            val inputs = HashMap<String, OnnxTensor>().apply {
+                put("x", OnnxTensor.createTensor(env, x))
+                put("x_lengths", OnnxTensor.createTensor(env, xLen))
+                put("noise_scale", OnnxTensor.createTensor(env, floatArrayOf(noiseScale)))
+                put("noise_scale_w", OnnxTensor.createTensor(env, floatArrayOf(noiseScaleW)))
+                put("length_scale", OnnxTensor.createTensor(env, floatArrayOf(lengthScale)))
+                if (hasSid) put("sid", OnnxTensor.createTensor(env, longArrayOf((speakerId ?: 0).toLong())))
+            }
             try {
                 session.run(inputs).use { result ->
                     val tensor = result[0] as OnnxTensor
@@ -220,8 +234,33 @@ class VitsSynthesizer(
             ('A'..'Z').forEach { add(it) }
             add('\'')
         }
-        private val SYMBOL_TO_ID: Map<Char, Int> =
+        /** Oxirgi sintezda modelga noma'lum bo'lgani uchun TASHLAB YUBORILGAN belgilar (talaffuz buzilishi sababi bo'lishi mumkin). */
+        val dropped: MutableSet<Char> = java.util.concurrent.ConcurrentHashMap.newKeySet<Char>()
+
+        private val DEFAULT_SYMBOL_TO_ID: Map<Char, Int> =
             SYMBOLS.withIndex().associate { (i, c) -> c to i }
+
+        /** uz_tts_base.json dagi "symbols" (bitta satr: har belgi — bitta simvol) -> jadval; yo'q bo'lsa null. */
+        private fun symbolsFrom(cfg: JSONObject): Map<Char, Int>? {
+            val s = cfg.optString("symbols", "")
+            if (s.isEmpty()) return null
+            val m = HashMap<Char, Int>()
+            s.forEachIndexed { i, c -> if (!m.containsKey(c)) m[c] = i }
+            return m
+        }
+
+        private fun speakersFrom(cfg: JSONObject): Map<String, Int> {
+            val o = cfg.optJSONObject("speakers") ?: return emptyMap()
+            val m = LinkedHashMap<String, Int>()
+            o.keys().forEach { k -> m[k] = o.optInt(k, 0) }
+            return m
+        }
+
+        /** Modelning rol -> spiker jadvali (model yuklanmasdan, faqat JSON dan). Bo'sh = bir spikerli model. */
+        fun readSpeakers(work: WorkDir): Map<String, Int> = try {
+            val (_, cfgFile) = modelFiles(work)
+            if (cfgFile.isFile) speakersFrom(JSONObject(cfgFile.readText())) else emptyMap()
+        } catch (_: Exception) { emptyMap() }
 
         fun modelFiles(work: WorkDir): Pair<File, File> =
             File(work.models, "vits_uzbek.onnx") to File(work.models, "uz_tts_base.json")
@@ -269,9 +308,13 @@ class VitsSynthesizer(
                 throw IllegalStateException("VITS kirishlari mos emas: $names")
             }
             Timber.i("VITS tayyor, sr=$sr")
+            val hasSid = names.contains("sid")
+            val speakers = speakersFrom(cfg)
+            Timber.i("VITS: belgilar=${symbolsFrom(cfg)?.size ?: "standart"}, spikerlar=${if (hasSid) speakers else "yo'q"}")
             return VitsSynthesizer(
                 session, env, sr, addBlank, noiseScale, noiseScaleW,
-                minLengthScale, maxChars, pauseS, normalizer
+                minLengthScale, maxChars, pauseS, normalizer,
+                symbolsFrom(cfg) ?: DEFAULT_SYMBOL_TO_ID, speakers, hasSid
             ).also {
                 it.baseScale = baseLengthScale
                 it.pitchSemitones = pitchSemitones
@@ -283,17 +326,19 @@ class VitsSynthesizer(
             var t = text
             mapOf(
                 'ʻ' to '\'', 'ʼ' to '\'', '‘' to '\'', '’' to '\'',
-                '`' to '\'', '–' to '-', '—' to '-', '−' to '-'
+                '`' to '\'', '´' to '\'', 'ʹ' to '\'', '′' to '\'', 'ʿ' to '\'', 'ˈ' to '\'',
+                '–' to '-', '—' to '-', '−' to '-'
             ).forEach { (a, b) -> t = t.replace(a, b) }
             return t.lowercase().replace(Regex("\\s+"), " ").trim()
         }
 
-        fun textToIds(text: String, addBlank: Boolean): LongArray {
+        fun textToIds(text: String, addBlank: Boolean, symbolToId: Map<Char, Int> = DEFAULT_SYMBOL_TO_ID): LongArray {
             val cleaned = cleanUzbek(text)
             val ids = mutableListOf<Int>()
             for (ch in cleaned) {
-                val id = SYMBOL_TO_ID[ch]
+                val id = symbolToId[ch]
                 if (id != null) ids += id
+                else if (!ch.isWhitespace()) dropped.add(ch)   // model bilmaydigan belgi jim tashlanardi
             }
             if (ids.isEmpty()) return longArrayOf()
             if (addBlank) {

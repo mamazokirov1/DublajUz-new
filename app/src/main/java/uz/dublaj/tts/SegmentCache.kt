@@ -19,11 +19,13 @@ class SegmentCache(private val dir: File, private val paramKey: String) {
 
     init { dir.mkdirs() }
 
-    private fun fileFor(text: String, pitch: Float): File {
+    private fun fileFor(text: String, pitch: Float, variant: String = ""): File {
         val md = MessageDigest.getInstance("SHA-1")
         md.update(paramKey.toByteArray(Charsets.UTF_8))
         md.update(0)
         md.update(String.format(Locale.US, "%.2f", pitch).toByteArray(Charsets.UTF_8))
+        md.update(0)
+        md.update(variant.toByteArray(Charsets.UTF_8))
         md.update(0)
         md.update(text.toByteArray(Charsets.UTF_8))
         val hex = md.digest().joinToString("") { "%02x".format(it) }
@@ -35,8 +37,11 @@ class SegmentCache(private val dir: File, private val paramKey: String) {
      * @param slotDependent false bo'lsa (Chatterbox) vaqt natijaga ta'sir qilmaydi
      * @param canCompress VITS bu sozlamalarda gapni tezlashtira oladimi
      */
-    fun get(text: String, pitch: Float, slotSec: Double, slotDependent: Boolean, canCompress: Boolean): VitsSynthesizer.SegmentAudio? {
-        val f = fileFor(text, pitch)
+    fun get(
+        text: String, pitch: Float, slotSec: Double, slotDependent: Boolean, canCompress: Boolean,
+        variant: String = ""
+    ): VitsSynthesizer.SegmentAudio? {
+        val f = fileFor(text, pitch, variant)
         if (!f.isFile) return null
         return try {
             DataInputStream(f.inputStream().buffered()).use { inp ->
@@ -67,9 +72,12 @@ class SegmentCache(private val dir: File, private val paramKey: String) {
         }
     }
 
-    fun put(text: String, pitch: Float, slotSec: Double, seg: VitsSynthesizer.SegmentAudio, compressed: Boolean) {
+    fun put(
+        text: String, pitch: Float, slotSec: Double, seg: VitsSynthesizer.SegmentAudio, compressed: Boolean,
+        variant: String = ""
+    ) {
         if (seg.pcm.isEmpty()) return
-        val f = fileFor(text, pitch)
+        val f = fileFor(text, pitch, variant)
         val tmp = File(dir, f.name + ".tmp")
         try {
             DataOutputStream(tmp.outputStream().buffered()).use { out ->

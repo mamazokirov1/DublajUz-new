@@ -64,6 +64,12 @@ data class AppConfig(
     val levelClips: Boolean = true,
     /** Gaplar chetida uzunroq so'nish/ko'tarilish va asl ovozning yumshoq qaytishi (qirqilgandek eshitilmasin). */
     val softTransitions: Boolean = true,
+    /** Ovoz dvigateli: "onnx" (oflayn, o'zbekcha VITS) yoki "gemini" (onlayn, Gemini TTS). */
+    val ttsEngine: String = "onnx",
+    val gemTtsModel: String = "gemini-3.8-flash-lite-tts",
+    val gemVoiceMale: String = "Charon",
+    val gemVoiceFemale: String = "Kore",
+    val gemVoiceChild: String = "Leda",
     /** Chiqish audio sifati: 0 = standart (22.05 kHz, 96 kbps), 1 = yuqori (44.1 kHz, 160 kbps). */
     val audioQuality: Int = 0,
     /** Gap izohiga qarab ovoz balandligi siljishi (yarim ton). */

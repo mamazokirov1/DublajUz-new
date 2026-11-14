@@ -19,6 +19,8 @@ import timber.log.Timber
 import uz.dublaj.data.AppConfig
 import uz.dublaj.translate.activeKey
 import uz.dublaj.translate.newTranslator
+import uz.dublaj.tts.gemVoiceFor
+import uz.dublaj.tts.useGeminiTts
 import uz.dublaj.translate.withAddedKey
 import uz.dublaj.translate.provider
 import uz.dublaj.data.ConfigStore
@@ -310,12 +312,21 @@ class PipelineViewModel : ViewModel() {
                 _preview.value = "Ovoz tayyorlanmoqda…"
                 val cfg = _config.value
                 val (pcm, sr) = withContext(Dispatchers.Default) {
+                    if (cfg.useGeminiTts()) {
+                        // Onlayn Gemini ovozi: rolga mos tayyor ovoz (ton siljitilmaydi)
+                        val norm = uz.dublaj.text.TextNormalizer.fromAssets(app)
+                        val seg = uz.dublaj.tts.GeminiTtsClient(cfg.geminiKey, cfg.gemTtsModel)
+                            .synthesize(uz.dublaj.tts.GeminiTtsClient.prepare(norm, text), cfg.gemVoiceFor(role))
+                        return@withContext (if (cfg.levelClips) AudioLevel.level(seg.pcm) else seg.pcm) to seg.sampleRate
+                    }
                     val synth = previewSynth ?: pipeline.loadPreviewSynth(app, cfg).also { previewSynth = it }
+                    val sid = synth.speakerIdFor(role)   // ko'p spikerli model bo'lsa: ton siljitishsiz
                     synth.configure(
                         cfg.voiceNoise, cfg.voiceNoiseW,
                         1f / cfg.voiceSpeed.coerceAtLeast(0.3f), cfg.fitScale, cfg.voicePause,
-                        uz.dublaj.text.VoiceRoles.pitchFor(role, cfg)
+                        if (sid != null) cfg.voicePitch else uz.dublaj.text.VoiceRoles.pitchFor(role, cfg)
                     )
+                    synth.speakerId = sid
                     synth.setUserPronunciations(cfg.pronDict)
                     val seg = synth.synthesize(text, slotSec)
                     (if (cfg.levelClips) AudioLevel.level(seg.pcm) else seg.pcm) to seg.sampleRate
