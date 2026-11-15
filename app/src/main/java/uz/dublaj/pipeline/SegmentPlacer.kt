@@ -76,6 +76,26 @@ class SegmentPlacer(
         return Clip(id, startSample, audio.size, file, speed)
     }
 
+    /**
+     * Oldindan rejalashtirilgan joyga qo'yadi ([PlacementPlanner]): [speed] > 1 bo'lsa WSOLA bilan tezlashtiradi.
+     * @param pcm allaqachon [sr] chastotada
+     */
+    fun placeFixed(id: Int, placeAtSec: Double, speed: Float, pcm: ShortArray): Clip? {
+        if (pcm.isEmpty()) return null
+        var audio = pcm
+        var sp = 1.0f
+        if (speed > 1.01f) {
+            audio = TimeStretch.stretch(audio, sr, speed)
+            sp = speed
+        }
+        val startSample = (placeAtSec * sr).roundToInt().toLong().coerceAtLeast(0)
+        applyFade(audio)
+        val file = File(clipDir, "clip_$id.pcm")
+        RawPcm.write(file, audio)
+        Timber.d("place #$id @${"%.2f".format(placeAtSec)}s dur=${"%.2f".format(audio.size.toDouble() / sr)} speed=$sp")
+        return Clip(id, startSample, audio.size, file, sp)
+    }
+
     private fun applyFade(a: ShortArray) {
         val fade = min((sr * fadeMs / 1000.0).roundToInt().coerceAtLeast(1), a.size / 4)
         if (fade <= 0) return

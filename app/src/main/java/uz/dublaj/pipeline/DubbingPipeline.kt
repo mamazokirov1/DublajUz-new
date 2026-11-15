@@ -923,14 +923,19 @@ class DubbingPipeline {
             vitsCache.put(text, curPitch, slot, r, compressed = r.lengthScale < baseScale - 1e-4f, variant = variant)
             return r
         }
+        // 1-bosqich: hamma gap ovozlanadi (diskka). 2-bosqich: vaqtlar oldindan rejalashtirilib joylanadi.
+        class Synth(
+            val id: Int, val sStart: Double, val origEnd: Double, val sNext: Double,
+            val dur: Double, val ttsDur: Double, val file: File
+        )
+        val synths = ArrayList<Synth>()
         try {
             active.forEachIndexed { i, u ->
                 progress(0.05f + 0.55f * i / active.size, "Ovozlashtirish ${i + 1}/${active.size}" + if (cacheHits > 0) " (tayyor: $cacheHits)" else "")
                 val sStart = u.start + off
                 val sNext = active.getOrNull(i + 1)?.start?.plus(off)
-                // Haqiqiy bo'sh vaqt: oldingi klip tugashidan (kechikish bo'lsa) keyingi gap boshigacha
-                val fromEff = maxOf(sStart, placer.cursorSec)
-                val slot = ((sNext ?: duration) - fromEff).coerceAtLeast(0.3)
+                // Bo'sh vaqt: gap boshidan keyingi gap boshigacha (kechikishni keyin PlacementPlanner hal qiladi)
+                val slot = ((sNext ?: duration) - sStart).coerceAtLeast(0.3)
                 val availSec = (slot - config.marginS).coerceAtLeast(0.3)
                 // Foydalanuvchi o'z ovozini yozgan bo'lsa — shu ishlatiladi; aks holda ONNX/VITS
                 var seg: VitsSynthesizer.SegmentAudio
@@ -965,24 +970,10 @@ class DubbingPipeline {
                 }
                 val resampled = uz.dublaj.util.HqResample.resample(seg.pcm, seg.sampleRate, outSr)
                 val pcm = if (config.levelClips) uz.dublaj.util.AudioLevel.level(resampled) else resampled
-                placer.place(u.id, sStart, sNext, pcm)?.let { c ->
-                    clips.add(c)
-                    val placeAt = c.placeAtSample.toDouble() / outSr
-                    val lag = placeAt - sStart
-                    lags.add(lag)
-                    val problems = ArrayList<String>()
-                    if (c.speed > 1.2f) problems.add("tezlashtirilgan ${SyncReport.f(c.speed.toDouble())}×")
-                    if (lag > 0.8) problems.add("${SyncReport.f(lag)} s kechikkan")
-                    if (problems.isNotEmpty()) {
-                        dubIssues[u.id] = uz.dublaj.data.DUB_ISSUE_PREFIX + problems.joinToString(", ") + " — matnni qisqartirsangiz tabiiyroq chiqadi"
-                    }
-                    SyncReport.add(
-                        context,
-                        "#${u.id} s=${SyncReport.f(sStart)} slot=${SyncReport.f(slot)} tts=${SyncReport.f(seg.durationSec)} " +
-                            "x${SyncReport.f(c.speed.toDouble())} dub=${SyncReport.f(placeAt)}-${SyncReport.f(placeAt + c.samples.toDouble() / outSr)} " +
-                            "kechikish=${SyncReport.sf(lag)}"
-                    )
-                }
+                if (pcm.isEmpty()) return@forEachIndexed
+                val f = File(dir.temp, "synth_${u.id}.pcm")
+                uz.dublaj.util.RawPcm.write(f, pcm)
+                synths.add(Synth(u.id, sStart, u.end + off, sNext ?: duration, pcm.size.toDouble() / outSr, seg.durationSec, f))
             }
         } finally {
             vitsSynth?.close()
@@ -991,6 +982,42 @@ class DubbingPipeline {
             if (VitsSynthesizer.dropped.isNotEmpty()) {
                 SyncReport.add(context, "TASHLANGAN BELGILAR (modelga noma'lum): " + VitsSynthesizer.dropped.joinToString(" ") { "'$it'(U+%04X)".format(it.code) })
                 VitsSynthesizer.dropped.clear()
+            }
+        }
+        // ---- 2-bosqich: oldindan rejalashtirish (klip asl gap boshidan ERTA qo'yilmaydi)
+        if (synths.isNotEmpty()) {
+            progress(0.6f, "Vaqtlar rejalashtirilmoqda…")
+            val plan = PlacementPlanner.plan(
+                DoubleArray(synths.size) { synths[it].sStart },
+                DoubleArray(synths.size) { synths[it].sNext },
+                DoubleArray(synths.size) { synths[it].dur },
+                config.marginS.toDouble(), config.gapS.toDouble(), config.maxAtempo
+            )
+            var realCursor = 0.0
+            synths.forEachIndexed { k, sy ->
+                val pcm = uz.dublaj.util.RawPcm.read(sy.file)
+                sy.file.delete()
+                // Tezlashtirish uzunligi rejadan biroz farq qilsa ham klip'lar bir-biriga tegmasin
+                val at = maxOf(plan.placeAt[k], realCursor)
+                val c = placer.placeFixed(sy.id, at, plan.speed[k], pcm) ?: return@forEachIndexed
+                clips.add(c)
+                val placeAt = c.placeAtSample.toDouble() / outSr
+                val placeEnd = placeAt + c.samples.toDouble() / outSr
+                realCursor = placeEnd + config.gapS
+                val lag = placeAt - sy.sStart
+                lags.add(lag)
+                val problems = ArrayList<String>()
+                if (c.speed > 1.2f) problems.add("tezlashtirilgan ${SyncReport.f(c.speed.toDouble())}×")
+                if (lag > 0.8) problems.add("${SyncReport.f(lag)} s kechikkan")
+                if (problems.isNotEmpty()) {
+                    dubIssues[sy.id] = uz.dublaj.data.DUB_ISSUE_PREFIX + problems.joinToString(", ") + " — matnni qisqartirsangiz tabiiyroq chiqadi"
+                }
+                SyncReport.add(
+                    context,
+                    "#${sy.id} asl=${SyncReport.f(sy.sStart)}-${SyncReport.f(sy.origEnd)} keyingi=${SyncReport.f(sy.sNext)} " +
+                        "tts=${SyncReport.f(sy.ttsDur)} x${SyncReport.f(c.speed.toDouble())} " +
+                        "dub=${SyncReport.f(placeAt)}-${SyncReport.f(placeEnd)} kechikish=${SyncReport.sf(lag)}"
+                )
             }
         }
         if (clips.isEmpty()) throw IllegalStateException("Ovoz hosil bo'lmadi (matn bo'sh yoki o'qib bo'lmadi)")
