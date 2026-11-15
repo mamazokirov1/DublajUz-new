@@ -27,7 +27,7 @@ object ConfigStore {
             duckAmount = sp.getFloat("duckAmount", d.duckAmount),
             levelClips = sp.getBoolean("levelClips", d.levelClips),
             softTransitions = sp.getBoolean("softTransitions", d.softTransitions),
-            ttsEngine = sp.getString("ttsEngine", d.ttsEngine) ?: d.ttsEngine,
+            voiceEngine = sp.getString("voiceEngine", d.voiceEngine) ?: d.voiceEngine,
             gemTtsModel = sp.getString("gemTtsModel", d.gemTtsModel) ?: d.gemTtsModel,
             gemVoiceMale = sp.getString("gemVoiceMale", d.gemVoiceMale) ?: d.gemVoiceMale,
             gemVoiceFemale = sp.getString("gemVoiceFemale", d.gemVoiceFemale) ?: d.gemVoiceFemale,
@@ -110,7 +110,7 @@ object ConfigStore {
             .putFloat("duckAmount", c.duckAmount)
             .putBoolean("levelClips", c.levelClips)
             .putBoolean("softTransitions", c.softTransitions)
-            .putString("ttsEngine", c.ttsEngine)
+            .putString("voiceEngine", c.voiceEngine)
             .putString("gemTtsModel", c.gemTtsModel)
             .putString("gemVoiceMale", c.gemVoiceMale)
             .putString("gemVoiceFemale", c.gemVoiceFemale)

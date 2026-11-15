@@ -12,7 +12,7 @@ import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 /** Gemini TTS ishlatilsinmi: dvigatel tanlangan va kamida bitta kalit bor. */
-fun AppConfig.useGeminiTts(): Boolean = ttsEngine == "gemini" && splitApiKeys(geminiKey).isNotEmpty()
+fun AppConfig.useGeminiTts(): Boolean = voiceEngine == "gemini" && splitApiKeys(geminiKey).isNotEmpty()
 
 /** Rolga mos Gemini ovozi. Bo'sh rol = «asosiy ovoz» (baseVoiceFemale bo'yicha). */
 fun AppConfig.gemVoiceFor(role: String): String = when (role) {

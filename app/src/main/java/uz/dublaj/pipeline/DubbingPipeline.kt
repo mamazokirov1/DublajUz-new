@@ -748,7 +748,7 @@ class DubbingPipeline {
         val useCb = config.chatterboxReady
         val vitsOk = VitsSynthesizer.isReady(dir)
         val useGem = config.useGeminiTts()
-        if (config.ttsEngine == "gemini" && !useGem && !vitsOk && !useCb) {
+        if (config.voiceEngine == "gemini" && !useGem && !vitsOk && !useCb) {
             throw IllegalStateException("Gemini ovozi uchun Gemini API kaliti kerak: Sozlamalar → Tarjima (AI) da kalitni kiriting.")
         }
         if (!useCb && !vitsOk && !useGem) {

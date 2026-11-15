@@ -689,7 +689,7 @@ fun SettingsScreen(
             }
 
             // ---------------- ovoz dvigateli (oflayn ONNX yoki Gemini)
-            val gemOn = config.ttsEngine == "gemini"
+            val gemOn = config.voiceEngine == "gemini"
             val gemSample = "Salom! Bugun havo juda yaxshi. Qo'shnimning o'g'li xushxabar keltirdi."
             // Ilova bepul/oflayn bo'lishi kerak: pullik bo'lishi mumkin bo'lgan Gemini ovozi faqat Mutaxassis rejimida ko'rinadi
             if (expert) SectionCard(
@@ -701,12 +701,12 @@ fun SettingsScreen(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     FilterChip(
                         selected = !gemOn,
-                        onClick = { vm.setConfig(config.copy(ttsEngine = "onnx")) },
+                        onClick = { vm.setConfig(config.copy(voiceEngine = "onnx")) },
                         label = { Text("Oflayn (ONNX)") }
                     )
                     FilterChip(
                         selected = gemOn,
-                        onClick = { vm.setConfig(config.copy(ttsEngine = "gemini")) },
+                        onClick = { vm.setConfig(config.copy(voiceEngine = "gemini")) },
                         label = { Text("Gemini (yuqori sifat)") }
                     )
                 }
@@ -942,7 +942,7 @@ fun SettingsScreen(
                 HelpSlider(
                     "Dublaj siljishi", "${"%+.2f".format(config.syncOffsetS)} s",
                     "Hamma gaplarni birdaniga surish: musbat — kechroq, manfiy — erta boshlanadi. Dublaj doim erta bo'lsa musbat, kech bo'lsa manfiy qiling.",
-                    config.syncOffsetS, -0.6f..0.6f
+                    config.syncOffsetS, -1.5f..1.5f
                 ) { vm.setConfig(config.copy(syncOffsetS = it)) }
             }
 
