@@ -26,6 +26,8 @@ class WorkDir(context: Context) {
     val dubRunningFlag get() = File(temp, "dub_running.flag")
     /** Gap ovozlari keshi (faqat o'zgargan gaplar qayta ovozlanadi). */
     val ttsCache get() = File(temp, "tts_cache")
+    /** Montaj loyihasi: dublyaj klip'lari, asl audio, tinglash fayli (clearWork bilan o'chadi). */
+    val dubProject get() = File(temp, "dubproj")
     val extractedWav get() = File(temp, "extracted.wav")      // 16 kHz — Whisper uchun
     val mixWav get() = File(temp, "original_mix.wav")         // 22.05 kHz — aralashtirish uchun
     val refAutoWav get() = File(temp, "ref_auto.wav")         // videodan ajratilgan namuna ovoz (klonlash uchun)

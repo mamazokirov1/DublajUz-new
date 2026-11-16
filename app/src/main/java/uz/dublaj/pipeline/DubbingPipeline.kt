@@ -734,6 +734,52 @@ class DubbingPipeline {
         }
     }
 
+    /** Dublyajdan keyin klip'lar va asl audioni montaj papkasiga ko'chiradi (rename: tez). */
+    private fun saveMontage(
+        dir: WorkDir, video: File, sr: Int, duration: Double, title: String,
+        clips: List<SegmentPlacer.Clip>, units: List<TranslationUnit>, usedText: Map<Int, String>
+    ): Boolean {
+        val pd = dir.dubProject
+        return try {
+            pd.deleteRecursively()
+            pd.mkdirs()
+            val byId = units.associateBy { it.id }
+            val mclips = clips.map { c ->
+                val dst = File(pd, "clip_${c.id}.pcm")
+                if (!c.file.renameTo(dst)) { c.file.copyTo(dst, overwrite = true); c.file.delete() }
+                val u = byId[c.id]
+                val at = c.placeAtSample.toDouble() / sr
+                MontageClip(
+                    c.id, at, at, c.samples, c.speed, u?.start ?: at, u?.end ?: at,
+                    usedText[c.id] ?: u?.uzText.orEmpty(), dst
+                )
+            }
+            val orig = File(pd, "orig.wav")
+            if (!dir.mixWav.renameTo(orig)) { dir.mixWav.copyTo(orig, overwrite = true); dir.mixWav.delete() }
+            MontageProject(pd, video.absolutePath, sr, duration, title, mclips).save()
+            true
+        } catch (e: Exception) {
+            Timber.w(e, "Montaj loyihasi saqlanmadi")
+            try { pd.deleteRecursively() } catch (_: Exception) {}
+            false
+        }
+    }
+
+    fun montageAvailable(context: Context): Boolean = MontageProject.exists(ensure(context))
+
+    /** Montajdagi joylar bilan yakuniy videoni yig'adi. */
+    fun exportMontage(context: Context, cfg: AppConfig, onProgress: (Float, String) -> Unit): File {
+        val dir = ensure(context)
+        val p = MontageProject.load(dir)
+            ?: throw IllegalStateException("Montaj loyihasi topilmadi. Avval videoni dublyaj qiling.")
+        val video = File(p.videoPath)
+        if (!video.isFile) throw IllegalStateException("Asl video topilmadi. Videoni qayta tanlang va dublyaj qiling.")
+        val out = File(dir.output, "dublaj_${System.currentTimeMillis()}.mp4")
+        MontageRender.export(p, cfg, video, out, onProgress)
+        try { HistoryStore.writeMeta(out, p.title, p.duration, p.clips.size) } catch (e: Exception) { Timber.w(e, "Tarix yozilmadi") }
+        return out
+    }
+
     private fun dubInternal(
         context: Context,
         units: List<TranslationUnit>,
@@ -1024,6 +1070,7 @@ class DubbingPipeline {
 
         progress(0.62f, "Asl audio tayyorlanmoqda…")
         dir.mixWav.delete()   // boshqa chastotadagi eski nusxa qolmasin
+        try { dir.dubProject.deleteRecursively() } catch (_: Exception) {}   // eski montaj loyihasi yaroqsiz
         run {
             AudioExtractor.extractToWav(video, dir.mixWav, outSr) { p ->
                 progress(0.62f + 0.1f * p, "Asl audio tayyorlanmoqda…")
@@ -1032,6 +1079,7 @@ class DubbingPipeline {
 
         val outFile = File(dir.output, "dublaj_${System.currentTimeMillis()}.mp4")
         val totalSamples = (duration * outSr).toLong()
+        var montageSaved = false
         try {
             val origRanges = active.map { a ->
                 Pair((maxOf(0.0, a.start - 0.05) * outSr).toLong(), (a.end * outSr).toLong())
@@ -1042,9 +1090,13 @@ class DubbingPipeline {
                     progress(0.72f + 0.27f * p, "Video yig'ilmoqda…")
                 }
             }
+            // Montaj uchun klip'lar va asl audio saqlanadi (o'chirilmaydi)
+            montageSaved = saveMontage(dir, video, outSr, duration, title, clips, units, usedText)
         } finally {
-            clips.forEach { it.file.delete() }
-            dir.mixWav.delete()
+            if (!montageSaved) {
+                clips.forEach { it.file.delete() }
+                dir.mixWav.delete()
+            }
         }
         // Tarix uchun: metama'lumot va subtitrlar videoning yonida saqlanadi
         try {

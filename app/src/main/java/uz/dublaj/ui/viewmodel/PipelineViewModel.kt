@@ -946,6 +946,24 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
+    /** Montajda surilgan joylar bilan yakuniy videoni yig'adi (fonda ham ishlaydi). */
+    fun exportMontage(context: Context) {
+        if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting."); return }
+        releasePreview()
+        launchTask(context, "Montaj") {
+            val cfg = _config.value
+            val app = context.applicationContext
+            val out: File = withContext(Dispatchers.IO) {
+                pipeline.exportMontage(app, cfg) { p, m ->
+                    _state.value = PipelineState.Running("Montaj", p, m)
+                }.also { autoSave(app, it, cfg) }
+            }
+            _state.value = PipelineState.Success(out.absolutePath)
+            toast("Montaj videosi tayyor ✓")
+            PipelineService.notifyDone(app, "Montaj tayyor", "Yangi video saqlandi")
+        }
+    }
+
     /** Matn ajratish + tarjima; keyin foydalanuvchi tahrir qiladi. */
     fun transcribeAndTranslate(context: Context) {
         val uri = _videoUri.value ?: return

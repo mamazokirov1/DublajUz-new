@@ -1133,6 +1133,63 @@ fun SettingsScreen(
                 )
             }
 
+            // ---------------- fonda ishlash (batareya cheklovi)
+            val pm = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+            var unrestricted by remember { mutableStateOf(pm.isIgnoringBatteryOptimizations(context.packageName)) }
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+                    if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                        unrestricted = pm.isIgnoringBatteryOptimizations(context.packageName)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(obs)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+            }
+            SectionCard(
+                icon = Icons.Default.BatteryChargingFull,
+                title = "Fonda ishlash",
+                subtitle = if (unrestricted) "Batareya cheklovi o'chirilgan ✓" else "Telefon ilovani fonda to'xtatishi mumkin"
+            ) {
+                Text(
+                    "Dublyaj ketayotganda ilovani fonga olsangiz yoki ekranni o'chirsangiz, ba'zi telefonlar (Xiaomi, Huawei, Samsung, Oppo, Vivo) " +
+                        "jarayonni to'xtatadi. Batareya cheklovini o'chirsangiz, ish uzilmaydi.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+                if (!unrestricted) {
+                    FilledTonalButton(
+                        onClick = {
+                            // Android 11+ paket ko'rinishi: resolveActivity null qaytarishi mumkin, shuning uchun to'g'ridan-to'g'ri urinamiz
+                            try {
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            } catch (e: Exception) {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                            .setData(Uri.parse("package:${context.packageName}"))
+                                    )
+                                } catch (_: Exception) {
+                                }
+                            }
+                        },
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Default.BatteryChargingFull, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Batareya cheklovini o'chirish")
+                    }
+                    Text(
+                        "Ro'yxatdan DublajUz ni toping va «Cheklovsiz» (yoki «Optimallashtirmaslik») ni tanlang.",
+                        style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                    )
+                }
+                Text(
+                    "Xiaomi/Redmi: Xavfsizlik → Ruxsatlar → Avtoishga tushirish. Huawei: Ilovalar → Ishga tushirish → qo'lda boshqarish. " +
+                        "Samsung: Batareya → Fon rejimidagi cheklovlar.",
+                    style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+                )
+            }
+
             // ---------------- xotira
             val shownMb by animateIntAsState(usedMb.toInt(), animationSpec = tween(700), label = "usedMb")
             SectionCard(

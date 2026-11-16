@@ -64,6 +64,7 @@ fun HomeScreen(
     onHistory: () -> Unit,
     onQueue: () -> Unit,
     onTextTools: () -> Unit = {},
+    onMontaj: () -> Unit = {},
     onPlay: (Uri) -> Unit = {}
 ) {
     val busy by vm.busy.collectAsState()
@@ -391,7 +392,7 @@ fun HomeScreen(
                 // ---- jarayon holati
                 when (val s = state) {
                     is PipelineState.Running -> RunningBanner(s, cancelling, onCancel = { vm.cancel() })
-                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay, units, onEditTranslation)
+                    is PipelineState.Success -> SuccessCard(File(s.outputPath), onPlay, units, onEditTranslation, onMontaj)
                     is PipelineState.Error -> ErrorCard(
                         message = s.message,
                         onClose = { vm.resetState() },
@@ -748,10 +749,20 @@ private fun SetupCard(
 }
 
 @Composable
-private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj.data.TranslationUnit> = emptyList(), onReview: () -> Unit = {}) {
+private fun SuccessCard(
+    file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj.data.TranslationUnit> = emptyList(),
+    onReview: () -> Unit = {}, onMontaj: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val cs = MaterialTheme.colorScheme
+    // Montaj faqat dublyaj klip'lari saqlangan bo'lsa ishlaydi
+    var hasMontage by remember(file) { mutableStateOf(false) }
+    LaunchedEffect(file) {
+        hasMontage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            uz.dublaj.pipeline.MontageProject.exists(uz.dublaj.util.WorkDir(context.applicationContext))
+        }
+    }
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = cs.secondaryContainer)
@@ -789,6 +800,17 @@ private fun SuccessCard(file: File, onPlay: (Uri) -> Unit, units: List<uz.dublaj
                         )
                         FilledTonalButton(onClick = onReview) { Text("Ko'rib chiqish va tuzatish") }
                     }
+                }
+            }
+            if (hasMontage) {
+                FilledTonalButton(
+                    onClick = onMontaj,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Icon(Icons.Default.Edit, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Montaj: dublyaj ovozini surish", style = MaterialTheme.typography.titleMedium)
                 }
             }
             Button(

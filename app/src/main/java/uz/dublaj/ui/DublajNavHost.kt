@@ -36,6 +36,7 @@ import androidx.navigation.compose.rememberNavController
 import uz.dublaj.ui.screens.EditTranslationScreen
 import uz.dublaj.ui.screens.HistoryScreen
 import uz.dublaj.ui.screens.HomeScreen
+import uz.dublaj.ui.screens.MontageScreen
 import uz.dublaj.ui.screens.PlayerScreen
 import uz.dublaj.ui.screens.QueueScreen
 import uz.dublaj.ui.screens.TextToolsScreen
@@ -52,16 +53,18 @@ object Routes {
     const val QUEUE = "queue"
     const val PLAYER = "player"
     const val TEXT = "text"
+    const val MONTAJ = "montaj"
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {}, initialOnboardingDone: Boolean = false) {
     val navController = rememberNavController()
-    // NavHost'dan TASHQARIDA yaratiladi -> Activity'ga bog'langan, barcha ekranlar bitta nusxani ulashadi
-    val vm: PipelineViewModel = viewModel()
-
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Ilova darajasidagi ViewModel: Activity yopilsa ham (Orqaga, so'nggi ilovalardan olib tashlash) fondagi ish
+    // bekor bo'lmaydi va ilova qayta ochilganda holat saqlanib turadi. Barcha ekranlar bitta nusxani ulashadi.
+    val vm: PipelineViewModel = viewModel(viewModelStoreOwner = ctx.applicationContext as uz.dublaj.DublajApp)
+
     // Config (onboardingDone, Pro, ...) birinchi ochilishda yuklansin
     LaunchedEffect(Unit) { vm.restore(ctx) }
     LaunchedEffect(incomingUri) {
@@ -162,6 +165,7 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
                 onHistory = { navController.navigate(Routes.HISTORY) },
                 onQueue = { navController.navigate(Routes.QUEUE) },
                 onTextTools = { navController.navigate(Routes.TEXT) },
+                onMontaj = { navController.navigate(Routes.MONTAJ) },
                 onPlay = { uri ->
                     vm.openPlayer(uri)
                     navController.navigate(Routes.PLAYER)
@@ -185,6 +189,16 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
         }
         composable(Routes.PLAYER) {
             PlayerScreen(vm = vm, onBack = { navController.popBackStack() })
+        }
+        composable(Routes.MONTAJ) {
+            MontageScreen(
+                vm = vm,
+                onBack = { navController.popBackStack() },
+                onExported = { f ->
+                    vm.openPlayer(Uri.fromFile(f))
+                    navController.navigate(Routes.PLAYER) { popUpTo(Routes.MONTAJ) { inclusive = true } }
+                }
+            )
         }
         composable(Routes.TEXT) {
             TextToolsScreen(vm = vm, onBack = { navController.popBackStack() })
