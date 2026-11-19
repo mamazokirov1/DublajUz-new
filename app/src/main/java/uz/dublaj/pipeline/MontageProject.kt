@@ -15,13 +15,16 @@ class MontageClip(
     var atSec: Double,
     /** Dublyaj paytidagi dastlabki joyi (qayta tiklash uchun). */
     val at0Sec: Double,
-    val samples: Int,
-    val speed: Float,
+    /** Qayta ovozlanganda o'zgaradi. */
+    @Volatile var samples: Int,
+    @Volatile var speed: Float,
     /** Asl nutqning boshi/oxiri (siljishsiz). */
     val origStart: Double,
     val origEnd: Double,
-    val text: String,
-    val file: File
+    @Volatile var text: String,
+    val file: File,
+    /** Gap izohi: "" | "erkak" | "ayol" | "bola" (qayta ovozlashda boshlang'ich tanlov). */
+    @Volatile var role: String = ""
 ) {
     fun durSec(sr: Int): Double = samples.toDouble() / sr
     fun placeSample(sr: Int): Long = (atSec * sr).roundToInt().toLong().coerceAtLeast(0)
@@ -57,7 +60,7 @@ class MontageProject(
             arr.put(JSONObject().apply {
                 put("id", c.id); put("at", c.atSec); put("at0", c.at0Sec)
                 put("samples", c.samples); put("speed", c.speed.toDouble())
-                put("os", c.origStart); put("oe", c.origEnd); put("text", c.text)
+                put("os", c.origStart); put("oe", c.origEnd); put("text", c.text); put("role", c.role)
             })
         }
         val root = JSONObject()
@@ -87,7 +90,8 @@ class MontageProject(
                     else MontageClip(
                         id, o.getDouble("at"), o.optDouble("at0", o.getDouble("at")),
                         o.getInt("samples"), o.optDouble("speed", 1.0).toFloat(),
-                        o.optDouble("os", 0.0), o.optDouble("oe", 0.0), o.optString("text", ""), cf
+                        o.optDouble("os", 0.0), o.optDouble("oe", 0.0), o.optString("text", ""), cf,
+                        o.optString("role", "")
                     )
                 }
                 if (clips.isEmpty()) null

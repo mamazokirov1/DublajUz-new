@@ -24,6 +24,8 @@ fun AppConfig.gemVoiceFor(role: String): String = when (role) {
 
 /**
  * Gemini TTS (gemini-3.8-*-tts): o'zbek tilini (Northern Uzbek) qo'llab-quvvatlaydi.
+ * So'rov rasmiy Interactions API (POST /v1beta/interactions) formatida: matn `input` da, uslub `speech_metadata`
+ * annotatsiyasida, ovoz `generation_config.speech_config` da.
  * Foydalanuvchining o'z Gemini API kaliti ishlatiladi (bir nechta bo'lsa, limit tugaganda keyingisiga o'tadi).
  * Javob: 24 kHz, mono, 16 bit PCM (WAV yoki xom PCM).
  */
@@ -79,18 +81,23 @@ class GeminiTtsClient(apiKeys: String, private val model: String) {
     private fun restFor(e: TtsException): Long = if (e.code == 429) 65_000L else 12 * 3600_000L
 
     private fun call(key: String, text: String, voice: String, style: String?): VitsSynthesizer.SegmentAudio {
-        val part = JSONObject().put("text", text)
-        if (!style.isNullOrBlank()) part.put("speech_metadata", JSONObject().put("style", style))
+        val textPart = JSONObject().put("type", "text").put("text", text)
+        if (!style.isNullOrBlank()) {
+            textPart.put(
+                "annotations",
+                org.json.JSONArray().put(JSONObject().put("type", "speech_metadata").put("style", style))
+            )
+        }
         val body = JSONObject()
-            .put("contents", org.json.JSONArray().put(
-                JSONObject().put("role", "user").put("parts", org.json.JSONArray().put(part))
+            .put("model", model)
+            .put("input", org.json.JSONArray().put(
+                JSONObject().put("type", "user_input").put("content", org.json.JSONArray().put(textPart))
             ))
-            .put("generationConfig", JSONObject()
-                .put("responseModalities", org.json.JSONArray().put("AUDIO"))
-                .put("speechConfig", JSONObject()
-                    .put("voiceConfig", JSONObject().put("voice", voice))))
+            .put("response_format", JSONObject().put("type", "audio"))
+            .put("generation_config", JSONObject()
+                .put("speech_config", org.json.JSONArray().put(JSONObject().put("voice", voice))))
 
-        val conn = URL("$BASE/models/$model:generateContent").openConnection() as HttpURLConnection
+        val conn = URL("$BASE/interactions").openConnection() as HttpURLConnection
         try {
             conn.requestMethod = "POST"
             conn.connectTimeout = 20_000
@@ -127,23 +134,40 @@ class GeminiTtsClient(apiKeys: String, private val model: String) {
 
     private fun parse(raw: String): VitsSynthesizer.SegmentAudio {
         val root = JSONObject(raw)
-        val cand = root.optJSONArray("candidates")?.optJSONObject(0)
-        val parts = cand?.optJSONObject("content")?.optJSONArray("parts")
         var data: String? = null
         var mime = ""
-        if (parts != null) {
-            for (i in 0 until parts.length()) {
-                val inl = parts.optJSONObject(i)?.optJSONObject("inlineData")
-                    ?: parts.optJSONObject(i)?.optJSONObject("inline_data")
-                if (inl != null && inl.optString("data").isNotEmpty()) {
-                    data = inl.optString("data")
-                    mime = inl.optString("mimeType", inl.optString("mime_type", ""))
-                    break
+        // Interactions API: steps[].content[] ichida type == "audio" (oxirgisi olinadi)
+        val steps = root.optJSONArray("steps")
+        if (steps != null) {
+            for (i in 0 until steps.length()) {
+                val content = steps.optJSONObject(i)?.optJSONArray("content") ?: continue
+                for (j in 0 until content.length()) {
+                    val c = content.optJSONObject(j) ?: continue
+                    if (c.optString("type") == "audio" && c.optString("data").isNotEmpty()) {
+                        data = c.optString("data")
+                        mime = c.optString("mime_type", "")
+                    }
+                }
+            }
+        }
+        // Eski generateContent javobi (zaxira)
+        val cand = root.optJSONArray("candidates")?.optJSONObject(0)
+        if (data == null) {
+            val parts = cand?.optJSONObject("content")?.optJSONArray("parts")
+            if (parts != null) {
+                for (i in 0 until parts.length()) {
+                    val inl = parts.optJSONObject(i)?.optJSONObject("inlineData")
+                        ?: parts.optJSONObject(i)?.optJSONObject("inline_data")
+                    if (inl != null && inl.optString("data").isNotEmpty()) {
+                        data = inl.optString("data")
+                        mime = inl.optString("mimeType", inl.optString("mime_type", ""))
+                        break
+                    }
                 }
             }
         }
         if (data == null) {
-            val reason = cand?.optString("finishReason").orEmpty()
+            val reason = cand?.optString("finishReason").orEmpty().ifEmpty { root.optString("status") }
             throw TtsException("Gemini ovoz qaytarmadi${if (reason.isNotEmpty()) " ($reason)" else ""}")
         }
         val bytes = Base64.getDecoder().decode(data)

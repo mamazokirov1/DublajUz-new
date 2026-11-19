@@ -751,7 +751,7 @@ class DubbingPipeline {
                 val at = c.placeAtSample.toDouble() / sr
                 MontageClip(
                     c.id, at, at, c.samples, c.speed, u?.start ?: at, u?.end ?: at,
-                    usedText[c.id] ?: u?.uzText.orEmpty(), dst
+                    usedText[c.id] ?: u?.uzText.orEmpty(), dst, u?.voiceRole.orEmpty()
                 )
             }
             val orig = File(pd, "orig.wav")
