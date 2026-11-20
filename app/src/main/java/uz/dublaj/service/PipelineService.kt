@@ -47,7 +47,14 @@ class PipelineService : Service() {
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 else -> 0
             }
-            ServiceCompat.startForeground(this, NOTIF_ID, notification, type)
+            try {
+                ServiceCompat.startForeground(this, NOTIF_ID, notification, type)
+            } catch (e: Exception) {
+                // Yangi Android tur'ni rad etsa: dataSync bilan qayta uramiz (manifestda e'lon qilingan)
+                Timber.w(e, "startForeground (type=$type), dataSync bilan qayta uriladi")
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) throw e
+                ServiceCompat.startForeground(this, NOTIF_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+            }
         } catch (e: Exception) {
             Timber.w(e, "startForeground")
             stopSelf()

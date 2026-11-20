@@ -22,6 +22,7 @@ import uz.dublaj.text.SentenceMerger
 import uz.dublaj.text.TextNormalizer
 import uz.dublaj.text.TranslationQa
 import uz.dublaj.translate.GeminiTranslator
+import uz.dublaj.translate.activeModel
 import uz.dublaj.translate.newTranslator
 import uz.dublaj.translate.provider
 import uz.dublaj.tts.ChatterboxClient
@@ -417,6 +418,7 @@ class DubbingPipeline {
         }
         var skipRest = false
         var onlineNote: String? = null
+        val triedFallbacks = HashSet<String>()
         var idx = 0
         // Kalit limiti tugab, keyingisiga o'tilganda foydalanuvchiga ko'rsatamiz (dialog chiqmaydi)
         fun watchKeys(t: GeminiTranslator) {
@@ -469,6 +471,18 @@ class DubbingPipeline {
                     } catch (e: GeminiTranslator.GeminiException) {
                         Timber.w(e, "Gemini chunk xato")
                         if (firstError == null) firstError = e.message
+                        // Server band (5xx) yoki limit: avtomatik zaxira modelga/provayderga o'tamiz (dialogsiz)
+                        if (e.code in 500..599 || e.code == 429) {
+                            val alt = fallbackConfig(cfgNow, triedFallbacks)
+                            if (alt != null) {
+                                cfgNow = alt
+                                gem = cfgNow.newTranslator()
+                                watchKeys(gem)
+                                firstError = null
+                                progress(0.05f + 0.85f * idx / src.size, "Server band — ${cfgNow.provider().label} (${cfgNow.activeModel()}) ga o'tildi")
+                                continue
+                            }
+                        }
                         // Kalit/limit/hisob/internet muammosi: jarayonni yo'qotmasdan foydalanuvchidan so'raymiz
                         val pausable = e.code != 0 || (e.message ?: "").startsWith("Internet")
                         if (onProblem != null && pausable) {
@@ -548,6 +562,35 @@ class DubbingPipeline {
         return result
     }
 
+
+    /**
+     * Server band bo'lganda zaxira: avval shu provayderning yengil modeli (Gemini), keyin kaliti kiritilgan boshqa provayder.
+     * Har bir variant faqat bir marta sinaladi. Topilmasa null.
+     */
+    private fun fallbackConfig(cur: AppConfig, tried: MutableSet<String>): AppConfig? {
+        tried.add("${cur.aiProvider}:${cur.activeModel()}")
+        val gemKeys = uz.dublaj.translate.splitApiKeys(cur.geminiKey)
+        if (gemKeys.isNotEmpty()) {
+            for (m in listOf("gemini-3.5-flash-lite", "gemini-3.5-flash")) {
+                val tag = "gemini:$m"
+                if (tag !in tried) {
+                    tried.add(tag)
+                    return cur.copy(aiProvider = "gemini", geminiModel = m)
+                }
+            }
+        }
+        for (pr in uz.dublaj.translate.AiProvider.values()) {
+            if (pr == uz.dublaj.translate.AiProvider.GEMINI || pr.customUrl) continue
+            if (uz.dublaj.translate.splitApiKeys(cur.aiKeys[pr.id].orEmpty()).isEmpty()) continue
+            val c = cur.copy(aiProvider = pr.id)
+            val tag = "${pr.id}:${c.activeModel()}"
+            if (tag !in tried) {
+                tried.add(tag)
+                return c
+            }
+        }
+        return null
+    }
 
     // ------------------------------------------------------------------ to'xtab qolgan tarjimani davom ettirish
 
