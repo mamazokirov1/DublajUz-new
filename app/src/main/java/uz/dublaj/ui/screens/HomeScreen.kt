@@ -760,7 +760,9 @@ private fun SuccessCard(
     var hasMontage by remember(file) { mutableStateOf(false) }
     LaunchedEffect(file) {
         hasMontage = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            uz.dublaj.pipeline.MontageProject.exists(uz.dublaj.util.WorkDir(context.applicationContext))
+            val w = uz.dublaj.util.WorkDir(context.applicationContext)
+            val cur = uz.dublaj.pipeline.MontageArchive.currentOut(w)
+            uz.dublaj.pipeline.MontageProject.exists(w) && (cur == null || cur == file.name)
         }
     }
     Card(

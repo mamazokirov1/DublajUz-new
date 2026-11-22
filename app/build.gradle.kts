@@ -10,12 +10,14 @@ val adTestApp = "ca-app-pub-3940256099942544~3347511713"
 val adTestBanner = "ca-app-pub-3940256099942544/6300978111"
 val adTestInter = "ca-app-pub-3940256099942544/1033173712"
 val adTestReward = "ca-app-pub-3940256099942544/5224354917"
+val adTestOpen = "ca-app-pub-3940256099942544/9257395921"
 fun adProp(name: String, env: String): String? =
     ((project.findProperty(name) as String?) ?: System.getenv(env))?.trim()?.takeIf { it.isNotEmpty() }
 val admobAppId = adProp("admobAppId", "ADMOB_APP_ID") ?: adTestApp
 val admobBanner = adProp("admobBanner", "ADMOB_BANNER_ID") ?: adTestBanner
 val admobInter = adProp("admobInterstitial", "ADMOB_INTERSTITIAL_ID") ?: adTestInter
 val admobReward = adProp("admobRewarded", "ADMOB_REWARDED_ID") ?: adTestReward
+val admobOpen = adProp("admobAppOpen", "ADMOB_APP_OPEN_ID") ?: adTestOpen
 
 android {
     namespace = "uz.dublaj"
@@ -87,6 +89,7 @@ android {
             buildConfigField("String", "ADMOB_BANNER_ID", "\"$admobBanner\"")
             buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$admobInter\"")
             buildConfigField("String", "ADMOB_REWARDED_ID", "\"$admobReward\"")
+            buildConfigField("String", "ADMOB_APP_OPEN_ID", "\"$admobOpen\"")
             // Play uchun: o'zini yangilash, bepul "test Pro" va server ovozi O'CHIQ
             buildConfigField("boolean", "SELF_UPDATE", "false")
             buildConfigField("boolean", "ALLOW_TEST_UNLOCK", "false")
@@ -100,6 +103,7 @@ android {
             buildConfigField("String", "ADMOB_BANNER_ID", "\"$adTestBanner\"")
             buildConfigField("String", "ADMOB_INTERSTITIAL_ID", "\"$adTestInter\"")
             buildConfigField("String", "ADMOB_REWARDED_ID", "\"$adTestReward\"")
+            buildConfigField("String", "ADMOB_APP_OPEN_ID", "\"$adTestOpen\"")
             buildConfigField("boolean", "SELF_UPDATE", "true")
             buildConfigField("boolean", "ALLOW_TEST_UNLOCK", "true")
             buildConfigField("boolean", "CLOUD_TTS", "true")

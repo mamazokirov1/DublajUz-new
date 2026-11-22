@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
         uz.dublaj.ui.theme.ThemeSettings.pro = initialConfig.isPro
         handleIntent(intent)
         uz.dublaj.monetization.ConsentManager.gatherAndInit(this)
+        uz.dublaj.monetization.AdsManager.requestColdAppOpen(this)
         addOnNewIntentListener { handleIntent(it) }
         setContent {
             DublajTheme {
@@ -46,6 +47,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        uz.dublaj.monetization.AdsManager.onForeground(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        uz.dublaj.monetization.AdsManager.onBackground()
     }
 
     private fun handleIntent(i: Intent?) {

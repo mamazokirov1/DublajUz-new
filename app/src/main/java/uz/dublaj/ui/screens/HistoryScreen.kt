@@ -2,7 +2,10 @@ package uz.dublaj.ui.screens
 
 import java.io.File
 
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -24,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uz.dublaj.ui.components.*
+import uz.dublaj.ui.viewmodel.PipelineViewModel
 import uz.dublaj.util.ExportUtils
 import uz.dublaj.util.HistoryEntry
 import uz.dublaj.util.HistoryStore
@@ -34,7 +38,13 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(onBack: () -> Unit, onPlay: (File) -> Unit = {}) {
+fun HistoryScreen(
+    vm: PipelineViewModel,
+    onBack: () -> Unit,
+    onPlay: (File) -> Unit = {},
+    onEdit: () -> Unit = {},
+    onMontage: () -> Unit = {}
+) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     var entries by remember { mutableStateOf<List<HistoryEntry>?>(null) }
@@ -42,6 +52,15 @@ fun HistoryScreen(onBack: () -> Unit, onPlay: (File) -> Unit = {}) {
     var confirmAll by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
+    var confirmEdit by remember { mutableStateOf<HistoryEntry?>(null) }
+    val curUnits by vm.translationUnits.collectAsState()
+    val pickVideo = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        uri?.let { vm.applyHistoryVideo(context, it, onEdit) }
+    }
+
+    fun doEdit(e: HistoryEntry) {
+        vm.openHistoryText(context, e.video, onNeedVideo = { pickVideo.launch(arrayOf("video/*")) }, onReady = onEdit)
+    }
 
     LaunchedEffect(refresh) {
         entries = withContext(Dispatchers.IO) { HistoryStore.list(context) }
@@ -114,18 +133,29 @@ fun HistoryScreen(onBack: () -> Unit, onPlay: (File) -> Unit = {}) {
                         entry,
                         onDelete = { toDelete = entry },
                         onChanged = { refresh++ },
-                        onPlay = onPlay
+                        onPlay = onPlay,
+                        onEditText = { if (curUnits.isNotEmpty()) confirmEdit = entry else doEdit(entry) },
+                        onMontage = { vm.openHistoryMontage(context, entry.video, onMontage) }
                     )
                 }
             }
         }
     }
 
+    confirmEdit?.let { e ->
+        AlertDialog(
+            onDismissRequest = { confirmEdit = null },
+            title = { Text("Joriy loyiha almashtiriladi") },
+            text = { Text("Hozir tahrirlanayotgan tarjima shu video loyihasi bilan almashadi. Davom etasizmi? (Kerak bo'lsa, avval loyihani fayl qilib saqlab qo'ying.)") },
+            confirmButton = { TextButton(onClick = { confirmEdit = null; doEdit(e) }) { Text("Davom etish") } },
+            dismissButton = { TextButton(onClick = { confirmEdit = null }) { Text("Bekor qilish") } }
+        )
+    }
     toDelete?.let { e ->
         AlertDialog(
             onDismissRequest = { toDelete = null },
             title = { Text("O'chirilsinmi?") },
-            text = { Text("Video, subtitr va audio fayllari o'chiriladi. Qaytarib bo'lmaydi.") },
+            text = { Text("Video, subtitr, audio, tahrirlash loyihasi va montaj fayllari o'chiriladi. Qaytarib bo'lmaydi.") },
             confirmButton = {
                 TextButton(onClick = {
                     HistoryStore.delete(e.video)
@@ -157,7 +187,14 @@ private fun dateOf(ms: Long): String =
     SimpleDateFormat("dd.MM.yyyy  HH:mm", Locale.getDefault()).format(Date(ms))
 
 @Composable
-private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: () -> Unit, onPlay: (File) -> Unit) {
+private fun HistoryItem(
+    entry: HistoryEntry,
+    onDelete: () -> Unit,
+    onChanged: () -> Unit,
+    onPlay: (File) -> Unit,
+    onEditText: () -> Unit,
+    onMontage: () -> Unit
+) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
@@ -197,7 +234,7 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                         style = MaterialTheme.typography.titleMedium, maxLines = 2
                     )
                     Text(
-                        "${dateOf(entry.createdAt)} • ${fmtSize(entry.sizeBytes)}",
+                        "${dateOf(entry.createdAt)} • ${fmtSize(entry.sizeBytes + entry.extraBytes)}",
                         style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
                     )
                 }
@@ -291,6 +328,27 @@ private fun HistoryItem(entry: HistoryEntry, onDelete: () -> Unit, onChanged: ()
                             leadingIcon = { Icon(Icons.Default.Delete, null, tint = cs.error) },
                             onClick = { menu = false; onDelete() }
                         )
+                    }
+                }
+            }
+            if (entry.canEditText || entry.canMontage) {
+                Row(
+                    Modifier.padding(start = 12.dp, end = 12.dp, bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (entry.canEditText) {
+                        OutlinedButton(onClick = onEditText, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Icon(Icons.Default.Edit, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Tarjimani tahrirlash", maxLines = 1)
+                        }
+                    }
+                    if (entry.canMontage) {
+                        OutlinedButton(onClick = onMontage, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) {
+                            Icon(Icons.Default.GraphicEq, null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Montaj / ovoz", maxLines = 1)
+                        }
                     }
                 }
             }

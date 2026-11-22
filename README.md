@@ -22,7 +22,7 @@ Batafsil Play qadamlari: **PLAY_CHECKLIST.md**. Maxfiylik siyosati: `PRIVACY.md`
 2. **Actions → Build APK** ishga tushadi (yoki *Run workflow*).
 3. Test APK: **Releases → eng yangi `build-N`** → `DublajUz.apk` (yoki run sahifasi → Artifacts → `DublajUz-debug-apk`).
 4. Run logida **"Check 16 KB page size"** qadami Play'ning 16 KB talabini tekshiradi.
-5. Play uchun: Secrets (`KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`; ixtiyoriy `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`) qo'shilgach, shu workflow **AAB** ham yig'adi.
+5. Play uchun: Secrets (`KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`; ixtiyoriy `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`, `ADMOB_REWARDED_ID`, `ADMOB_APP_OPEN_ID`) qo'shilgach, shu workflow **AAB** ham yig'adi.
 
 CI repodagi `gradle-wrapper.jar` ni ishlatmaydi — rasmiy Gradle 8.11.1 o'rnatadi (AGP 8.9.1, compileSdk/targetSdk 36).
 
@@ -131,3 +131,10 @@ Dependency: `billing-ktx:7.1.1` yoqilgan.
 - Product topilmasa / Billing yo'q (sideload) → test Pro ochiladi
 
 **Muhim:** Sideload APK da Play Billing odatda ishlamaydi; internal testing track orqali sinang.
+
+## v32 yangiliklari
+- Tarjima va asl matn yonida nusxalash / joylash tugmalari.
+- Tarixdagi eski videolarni tahrirlash: «Tarjimani tahrirlash» va «Montaj / ovoz».
+- Har bir gap uchun ovoz usuli (Avto, ONNX, Gemini, O'zim) va «Qayta dublyaj».
+- Montajda tanlangan ovozni qayta dublyaj qilish tugmasi.
+- Ilova ochilganda App Open reklamasi (Secret: `ADMOB_APP_OPEN_ID`).

@@ -31,7 +31,9 @@ data class TranslationUnit(
     /** Foydalanuvchi shu gap uchun o'z ovozini yozganmi (segment wav mavjud). */
     val hasUserVoice: Boolean = false,
     /** Spiker raqami: 0 = belgilanmagan, 1.. = «Spiker N» (ovozni spiker bo'yicha birdan berish uchun). */
-    val speaker: Int = 0
+    val speaker: Int = 0,
+    /** Shu gap uchun ovoz usuli: "" = umumiy sozlama, "onnx" (oflayn) yoki "gemini" (onlayn). */
+    val engine: String = ""
 )
 
 data class AppConfig(

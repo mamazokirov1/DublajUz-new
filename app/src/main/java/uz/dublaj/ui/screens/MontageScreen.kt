@@ -504,17 +504,20 @@ private fun MontageEditor(p: MontageProject, vm: PipelineViewModel, onBack: () -
                             contentPadding = PaddingValues(horizontal = 10.dp)
                         ) { Text("↶ Qaytarish") }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalButton(
-                            enabled = !busy && !revoicing && !exporting,
-                            onClick = { playing = false; showRevoice = true },
-                            contentPadding = PaddingValues(horizontal = 12.dp)
-                        ) { Text("🔊 Qayta ovozlash") }
-                    }
+                    Button(
+                        enabled = !busy && !revoicing && !exporting,
+                        onClick = { playing = false; showRevoice = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("🔊 Shu ovozni qayta dublyaj qilish") }
+                    Text(
+                        "Usulni tanlaysiz: ONNX, Gemini yoki o'z ovozingiz (aytib yozasiz).",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = cs.onSurfaceVariant
+                    )
                 }
             } else {
                 Text(
-                    "Dublyaj blokini bosing. Surish uchun 1 soniya bosib turing.",
+                    "Dublyaj blokini bosing: suring yoki «qayta dublyaj» (ONNX / Gemini / o'z ovozim). Surish uchun 1 soniya bosib turing.",
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant

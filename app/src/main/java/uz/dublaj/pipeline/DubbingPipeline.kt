@@ -662,6 +662,7 @@ class DubbingPipeline {
                 put("voiceRole", u.voiceRole)
                 put("hasUserVoice", u.hasUserVoice)
                 if (u.speaker > 0) put("speaker", u.speaker)
+                if (u.engine.isNotEmpty()) put("engine", u.engine)
                 if (u.alts.isNotEmpty()) put("alts", JSONArray(u.alts))
             })
         }
@@ -683,7 +684,8 @@ class DubbingPipeline {
                     if (u.has("issue") && !u.isNull("issue")) u.getString("issue") else null,
                     u.optString("voiceRole", ""),
                     u.optBoolean("hasUserVoice", false),
-                    u.optInt("speaker", 0)
+                    u.optInt("speaker", 0),
+                    u.optString("engine", "")
                 )
             }
         } catch (e: Exception) {
@@ -780,7 +782,8 @@ class DubbingPipeline {
     /** Dublyajdan keyin klip'lar va asl audioni montaj papkasiga ko'chiradi (rename: tez). */
     private fun saveMontage(
         dir: WorkDir, video: File, sr: Int, duration: Double, title: String,
-        clips: List<SegmentPlacer.Clip>, units: List<TranslationUnit>, usedText: Map<Int, String>
+        clips: List<SegmentPlacer.Clip>, units: List<TranslationUnit>, usedText: Map<Int, String>,
+        outName: String
     ): Boolean {
         val pd = dir.dubProject
         return try {
@@ -799,7 +802,7 @@ class DubbingPipeline {
             }
             val orig = File(pd, "orig.wav")
             if (!dir.mixWav.renameTo(orig)) { dir.mixWav.copyTo(orig, overwrite = true); dir.mixWav.delete() }
-            MontageProject(pd, video.absolutePath, sr, duration, title, mclips).save()
+            MontageProject(pd, video.absolutePath, sr, duration, title, mclips).also { it.outName = outName }.save()
             true
         } catch (e: Exception) {
             Timber.w(e, "Montaj loyihasi saqlanmadi")
@@ -819,7 +822,25 @@ class DubbingPipeline {
         if (!video.isFile) throw IllegalStateException("Asl video topilmadi. Videoni qayta tanlang va dublyaj qiling.")
         val out = File(dir.output, "dublaj_${System.currentTimeMillis()}.mp4")
         MontageRender.export(p, cfg, video, out, onProgress)
-        try { HistoryStore.writeMeta(out, p.title, p.duration, p.clips.size) } catch (e: Exception) { Timber.w(e, "Tarix yozilmadi") }
+        try {
+            HistoryStore.writeMeta(out, p.title, p.duration, p.clips.size, video.absolutePath)
+            if (p.outName.isNotBlank()) {
+                val prev = File(dir.output, p.outName)
+                HistoryStore.copyProject(prev, out)
+                try {
+                    val d0 = HistoryStore.loadProject(out) ?: HistoryStore.loadProject(prev)
+                    if (d0 != null) {
+                        val tx = p.clips.associate { it.id to it.text }
+                        val nu = d0.units.map { u -> tx[u.id]?.takeIf { it.isNotBlank() }?.let { u.copy(uzText = it) } ?: u }
+                        HistoryStore.projectFile(out).writeText(uz.dublaj.util.ProjectFile.toJson(p.title, cfg, nu), Charsets.UTF_8)
+                        SrtExporter.write(ExportUtils.srtFile(out, true), nu, true)
+                        SrtExporter.write(ExportUtils.srtFile(out, false), nu, false)
+                    }
+                } catch (e: Exception) { Timber.w(e, "Montaj loyihasi yozilmadi") }
+            }
+            p.outName = out.name
+            p.save()
+        } catch (e: Exception) { Timber.w(e, "Tarix yozilmadi") }
         return out
     }
 
@@ -837,6 +858,13 @@ class DubbingPipeline {
         val useCb = config.chatterboxReady
         val vitsOk = VitsSynthesizer.isReady(dir)
         val useGem = config.useGeminiTts()
+        val hasKey = uz.dublaj.translate.splitApiKeys(config.geminiKey).isNotEmpty()
+        val needGem = useGem || (hasKey && units.any { it.engine == "gemini" && !it.hasUserVoice })
+        if (!vitsOk && units.any { it.engine == "onnx" && it.uzText.isNotBlank() && !it.hasUserVoice }) {
+            throw IllegalStateException(
+                "Ba'zi gaplar ONNX ovoziga belgilangan, lekin ONNX ovoz komponenti yo'q. Sozlamalarda ovoz fayllarini qo'shing yoki ularni «Avto»/Gemini ga o'tkazing."
+            )
+        }
         if (config.voiceEngine == "gemini" && !useGem && !vitsOk && !useCb) {
             throw IllegalStateException("Gemini ovozi uchun Gemini API kaliti kerak: Sozlamalar → Tarjima (AI) da kalitni kiriting.")
         }
@@ -936,7 +964,8 @@ class DubbingPipeline {
         val vitsCache = SegmentCache(dir.ttsCache, vitsKey)
         val cbCache = SegmentCache(dir.ttsCache, cbKey)
         // ---- Gemini TTS (onlayn, yuqori sifat): ovoz nomi kesh kalitiga kiradi
-        val gem = if (useGem) uz.dublaj.tts.GeminiTtsClient(config.geminiKey, config.gemTtsModel) else null
+        val gem = if (needGem) uz.dublaj.tts.GeminiTtsClient(config.geminiKey, config.gemTtsModel) else null
+        var curEng = ""
         val gemCache = SegmentCache(
             dir.ttsCache,
             listOf("v1", uz.dublaj.BuildConfig.VERSION_CODE, "gem", config.gemTtsModel).joinToString("|")
@@ -951,7 +980,8 @@ class DubbingPipeline {
         val spk = VitsSynthesizer.readSpeakers(dir)
         var curSid = -1
         fun synthSeg(text: String, slot: Double): VitsSynthesizer.SegmentAudio {
-            if (gem != null && !gemOff) {
+            val gemWanted = when (curEng) { "onnx" -> false; "gemini" -> true; else -> useGem }
+            if (gem != null && !gemOff && gemWanted) {
                 val voice = config.gemVoiceFor(curRole)
                 val prepared = uz.dublaj.tts.GeminiTtsClient.prepare(norm, text)
                 val tight = slot * 1.15
@@ -988,7 +1018,7 @@ class DubbingPipeline {
                     fallbacks++
                 }
             }
-            if (cb != null && !cbOff) {
+            if (cb != null && !cbOff && curEng != "onnx") {
                 cbCache.get(text, 0f, slot, slotDependent = false, canCompress = false)?.let { cacheHits++; return it }
                 try {
                     val r = cb.synthesize(text, cbRef)
@@ -1043,6 +1073,7 @@ class DubbingPipeline {
                         curPitch = uz.dublaj.text.VoiceRoles.pitchFor(u.voiceRole, config)
                     }
                     curRole = u.voiceRole
+                    curEng = u.engine
                     seg = synthSeg(u.uzText, slot)
                 }
                 // Sig'masa: qisqaroq tarjima nomzodini sinaymiz (faqat foydalanuvchi matnni o'zgartirmagan bo'lsa)
@@ -1113,7 +1144,8 @@ class DubbingPipeline {
 
         progress(0.62f, "Asl audio tayyorlanmoqda…")
         dir.mixWav.delete()   // boshqa chastotadagi eski nusxa qolmasin
-        try { dir.dubProject.deleteRecursively() } catch (_: Exception) {}   // eski montaj loyihasi yaroqsiz
+        MontageArchive.archiveCurrent(dir)   // eski video montaji tarixga ko'chadi (tahrirlash uchun qoladi)
+        try { dir.dubProject.deleteRecursively() } catch (_: Exception) {}
         run {
             AudioExtractor.extractToWav(video, dir.mixWav, outSr) { p ->
                 progress(0.62f + 0.1f * p, "Asl audio tayyorlanmoqda…")
@@ -1134,7 +1166,7 @@ class DubbingPipeline {
                 }
             }
             // Montaj uchun klip'lar va asl audio saqlanadi (o'chirilmaydi)
-            montageSaved = saveMontage(dir, video, outSr, duration, title, clips, units, usedText)
+            montageSaved = saveMontage(dir, video, outSr, duration, title, clips, units, usedText, outFile.name)
         } finally {
             if (!montageSaved) {
                 clips.forEach { it.file.delete() }
@@ -1143,11 +1175,12 @@ class DubbingPipeline {
         }
         // Tarix uchun: metama'lumot va subtitrlar videoning yonida saqlanadi
         try {
-            HistoryStore.writeMeta(outFile, title, duration, active.size)
+            HistoryStore.writeMeta(outFile, title, duration, active.size, video.absolutePath)
             val finalUnits = if (usedText.isEmpty()) units else units.map { x ->
                 val t = usedText[x.id]
                 if (t != null) x.copy(uzText = t) else x
             }
+            HistoryStore.saveProject(outFile, title, config, finalUnits, dir)
             SrtExporter.write(ExportUtils.srtFile(outFile, true), finalUnits, true)
             SrtExporter.write(ExportUtils.srtFile(outFile, false), finalUnits, false)
         } catch (e: Exception) {

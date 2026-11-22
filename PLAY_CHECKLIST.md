@@ -10,8 +10,8 @@
 > **AAB nega chiqmagan edi?** CI `KEYSTORE_B64` Secret yo'q bo'lsa release bosqichini jimgina o'tkazib yuborardi. Endi Secret yo'q bo'lsa ish **qizil** bo'ladi va xabarda qaysi Secret yetishmayotgani yoziladi. 4 ta Secret (`KEYSTORE_B64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`, `KEY_ALIAS`) qo'shilgach — Actions → Run workflow — AAB `DublajUz-release-aab` artifaktida chiqadi.
 
 ## B. AdMob (ixtiyoriy, daromad uchun)
-1. admob.google.com → App qo'shing → App ID. Banner va Interstitial ad unit yarating.
-2. Secrets: `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`.
+1. admob.google.com → App qo'shing → App ID. Banner, Interstitial, Rewarded va **App Open** ad unit yarating.
+2. Secrets: `ADMOB_APP_ID`, `ADMOB_BANNER_ID`, `ADMOB_INTERSTITIAL_ID`, `ADMOB_REWARDED_ID`, `ADMOB_APP_OPEN_ID`.
 3. Berilmasa release ham **test reklamalari** bilan chiqadi (Play'ga yuklash mumkin, lekin pul tushmaydi).
 4. AdMob → Privacy & messaging → **GDPR** xabarini yarating va ilovaga bog'lang (UMP shu yerdan ishlaydi).
 
@@ -69,3 +69,12 @@
 - Erkak/ayol avtomatik aniqlanadi (`PitchEstimator` + `VoiceRoles`): Sozlamalar → Ovoz sifati → "Dublyaj ovozi" ni to'g'ri tanlang.
 - Ikkalasi ham videoni QAYTA aniqlash/tarjima qilganda ishlaydi.
 - v15-3: dublyajdan keyin hisobot — tezlashtirilgan (>1.2×) yoki kechikkan (>0.8 s) gaplar tahrir ekranida belgilanadi; natija kartasida "Ko'rib chiqish va tuzatish" tugmasi. Bunday belgilar tasdiqlashni to'smaydi.
+
+## v32: tahrirlash, ovoz usuli, ochilish reklamasi
+- **Tarixdan tahrirlash:** Tarix → videoda «Tarjimani tahrirlash» (tarjima, rollar, ovoz usullari, yozilgan ovozlar tiklanadi; eski videolarda subtitrdan tiklanadi, asl video topilmasa tanlatiladi) va «Montaj / ovoz» (blokni surish va bitta ovozni qayta dublyaj qilish). Har dublyaj yonida `.dublaj` loyiha fayli va `.mproj/` papkasi saqlanadi (joy ~3–5 MB/daqiqa), video o'chirilsa ular ham o'chadi.
+- **Ovoz usuli (har bir gap uchun):** tahrir ekranida Avto / ONNX / Gemini / O'zim. «Qayta dublyaj» tugmasi faqat o'zgargan gaplarni qayta ovozlaydi (qolganlari keshdan).
+- **Nusxalash/joylash:** asl matn va tarjima yonida; joylagandan keyin «Qaytarish».
+- **Ilova ochilganda reklama (App Open):** AdMob'da **App Open** birligi yarating → Secret `ADMOB_APP_OPEN_ID`. Berilmasa Google TEST reklamasi.
+  - Ko'rsatilmaydi: Pro'da; birinchi ishga tushishda (onboarding tugamaguncha); boshqa to'liq ekran reklamadan keyin 15 s ichida.
+  - Ko'rsatiladi: sovuq ochilganda (reklama 8 s ichida yuklansa) va ilova 60 s dan ko'p fonda bo'lib qaytganda; ikki marta orasida kamida 2 daqiqa.
+  - Play siyosati: reklama kutilmagan joyda chiqmasligi kerak; App Open Google tomonidan aynan ilova ochilishi uchun ruxsat etilgan format. Data safety'da reklama deklaratsiyasi o'zgarmaydi.

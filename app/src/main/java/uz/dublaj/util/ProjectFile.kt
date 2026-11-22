@@ -30,6 +30,7 @@ object ProjectFile {
                 if (u.issue != null) put("issue", u.issue)
                 put("voiceRole", u.voiceRole)
                 if (u.speaker > 0) put("speaker", u.speaker)
+                if (u.engine.isNotEmpty()) put("engine", u.engine)
                 if (u.alts.isNotEmpty()) put("alts", JSONArray(u.alts))
             })
         }
@@ -87,7 +88,8 @@ object ProjectFile {
                     issue = if (u.has("issue") && !u.isNull("issue")) u.getString("issue") else null,
                     voiceRole = u.optString("voiceRole", ""),
                     hasUserVoice = false,            // yozilgan ovozlar faylga kirmaydi
-                    speaker = u.optInt("speaker", 0)
+                    speaker = u.optInt("speaker", 0),
+                    engine = u.optString("engine", "")
                 )
             }
         } catch (e: Exception) {

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +15,7 @@ import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.MobileAds
 import com.google.android.gms.ads.OnUserEarnedRewardListener
+import com.google.android.gms.ads.appopen.AppOpenAd
 import com.google.android.gms.ads.rewarded.RewardedAd
 import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import com.google.android.gms.ads.interstitial.InterstitialAd
@@ -20,13 +23,14 @@ import com.google.android.gms.ads.interstitial.InterstitialAdLoadCallback
 import timber.log.Timber
 import uz.dublaj.BuildConfig
 import uz.dublaj.data.ConfigStore
+import java.lang.ref.WeakReference
 
 /**
- * Google AdMob — banner va interstitial.
+ * Google AdMob — banner, interstitial, rewarded va ilova ochilganda App Open.
  *
  * Reklama ID lari build vaqtida beriladi (app/build.gradle.kts):
  * - debug: har doim Google TEST ID lari
- * - release: CI Secrets (ADMOB_APP_ID, ADMOB_BANNER_ID, ADMOB_INTERSTITIAL_ID); berilmasa TEST ID
+ * - release: CI Secrets (ADMOB_APP_ID, ADMOB_BANNER_ID, ADMOB_INTERSTITIAL_ID, ADMOB_REWARDED_ID, ADMOB_APP_OPEN_ID); berilmasa TEST ID
  *
  * Reklama faqat foydalanuvchi roziligi (UMP) olingandan keyin ishga tushadi — [ConsentManager].
  */
@@ -40,6 +44,26 @@ object AdsManager {
 
     /** AdMob rewarded (mukofotli) birligi (build'dan). */
     val REWARDED_AD_UNIT: String = BuildConfig.ADMOB_REWARDED_ID
+
+    /** AdMob App Open birligi (build'dan). */
+    val APP_OPEN_AD_UNIT: String = BuildConfig.ADMOB_APP_OPEN_ID
+
+    private const val OPEN_TTL = 4 * 60 * 60 * 1000L
+    private const val OPEN_BG_MIN = 60_000L
+    private const val OPEN_GAP = 2 * 60 * 1000L
+    private const val FS_GAP = 15_000L
+    private const val COLD_WAIT = 8_000L
+
+    private var appOpen: AppOpenAd? = null
+    private var appOpenAt = 0L
+    private var loadingOpen = false
+    private var showingFs = false
+    private var lastFsEnd = 0L
+    private var lastOpenShown = 0L
+    private var bgAt = 0L
+    private var firstStart = true
+    private var coldDeadline = 0L
+    private var coldAct: WeakReference<ComponentActivity>? = null
 
     /** Mukofotli reklama ko'rsatishga tayyor bo'lganda true. */
     var rewardedReady by mutableStateOf(false)
@@ -70,6 +94,7 @@ object AdsManager {
                         adsReady = true
                         preloadInterstitial(app)
                         preloadRewarded(app)
+                        preloadAppOpen(app)
                     }
                 }
             } catch (e: Exception) {
@@ -103,15 +128,18 @@ object AdsManager {
                     Timber.i("Interstitial yuklandi")
                     ad.fullScreenContentCallback = object : FullScreenContentCallback() {
                         override fun onAdDismissedFullScreenContent() {
+                            fsEnd()
                             interstitial = null
                             preloadInterstitial(context.applicationContext)
                         }
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
                             Timber.w("Interstitial ko'rsatilmadi: ${error.message}")
+                            fsEnd()
                             interstitial = null
                             preloadInterstitial(context.applicationContext)
                         }
                         override fun onAdShowedFullScreenContent() {
+                            showingFs = true
                             Timber.i("Interstitial ko'rsatildi")
                         }
                     }
@@ -123,6 +151,103 @@ object AdsManager {
                 }
             }
         )
+    }
+
+    private fun fsEnd() {
+        showingFs = false
+        lastFsEnd = SystemClock.elapsedRealtime()
+    }
+
+    private fun openFresh(): Boolean = appOpen != null && SystemClock.elapsedRealtime() - appOpenAt < OPEN_TTL
+
+    fun preloadAppOpen(context: Context) {
+        if (!shouldShowAds(context) || !adsReady) return
+        if (loadingOpen || openFresh()) return
+        loadingOpen = true
+        val app = context.applicationContext
+        AppOpenAd.load(app, APP_OPEN_AD_UNIT, AdRequest.Builder().build(), object : AppOpenAd.AppOpenAdLoadCallback() {
+            override fun onAdLoaded(ad: AppOpenAd) {
+                loadingOpen = false
+                appOpen = ad
+                appOpenAt = SystemClock.elapsedRealtime()
+                Timber.i("App Open yuklandi")
+                tryColdShow()
+            }
+            override fun onAdFailedToLoad(error: LoadAdError) {
+                loadingOpen = false
+                appOpen = null
+                Timber.w("App Open yuklanmadi: ${error.message} (${error.code})")
+            }
+        })
+    }
+
+    /**
+     * Qoidalar (Google siyosati va foydalanuvchi qulayligi): Pro da yo'q; birinchi ishga tushishda (kirish ekranlari tugamaguncha) yo'q;
+     * boshqa to'liq ekran reklamadan keyin 15 s ichida yo'q; ikki App Open orasida kamida 2 daqiqa.
+     */
+    private fun canShowOpen(act: ComponentActivity): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        return adsReady && !showingFs && openFresh() && shouldShowAds(act) &&
+            ConfigStore.load(act).onboardingDone &&
+            now - lastFsEnd > FS_GAP &&
+            (lastOpenShown == 0L || now - lastOpenShown > OPEN_GAP) &&
+            act.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+    }
+
+    private fun showOpen(act: ComponentActivity) {
+        val ad = appOpen ?: return
+        appOpen = null
+        val app = act.applicationContext
+        ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() {
+                showingFs = true
+                lastOpenShown = SystemClock.elapsedRealtime()
+                Timber.i("App Open ko'rsatildi")
+            }
+            override fun onAdDismissedFullScreenContent() {
+                fsEnd()
+                preloadAppOpen(app)
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                Timber.w("App Open ko'rsatilmadi: ${error.message}")
+                fsEnd()
+                preloadAppOpen(app)
+            }
+        }
+        try {
+            showingFs = true
+            ad.show(act)
+        } catch (e: Exception) {
+            Timber.e(e, "App Open show xato")
+            fsEnd()
+        }
+    }
+
+    /** Ilova sovuq ochilganda: reklama ~8 soniyagacha yuklanishini kutadi, ulgurmasa o'tkazib yuboradi (foydalanuvchini kuttirmaydi). */
+    fun requestColdAppOpen(act: ComponentActivity) {
+        coldAct = WeakReference(act)
+        coldDeadline = SystemClock.elapsedRealtime() + COLD_WAIT
+        tryColdShow()
+    }
+
+    private fun tryColdShow() {
+        val act = coldAct?.get() ?: return
+        if (SystemClock.elapsedRealtime() > coldDeadline) { coldAct = null; return }
+        if (!openFresh()) return
+        coldAct = null
+        if (canShowOpen(act)) showOpen(act)
+    }
+
+    /** Activity.onStart dan: ilova fondan qaytganda (kamida 60 s tashqarida bo'lgan bo'lsa) App Open ko'rsatadi. */
+    fun onForeground(act: ComponentActivity) {
+        if (firstStart) { firstStart = false; return }
+        if (bgAt == 0L || SystemClock.elapsedRealtime() - bgAt < OPEN_BG_MIN) return
+        if (canShowOpen(act)) showOpen(act) else preloadAppOpen(act)
+    }
+
+    /** Activity.onStop dan. */
+    fun onBackground() {
+        bgAt = SystemClock.elapsedRealtime()
     }
 
     fun preloadRewarded(context: Context) {
@@ -159,13 +284,16 @@ object AdsManager {
             return
         }
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
+            override fun onAdShowedFullScreenContent() { showingFs = true }
             override fun onAdDismissedFullScreenContent() {
+                fsEnd()
                 rewarded = null
                 rewardedReady = false
                 preloadRewarded(app)
             }
             override fun onAdFailedToShowFullScreenContent(error: AdError) {
                 Timber.w("Rewarded ko'rsatilmadi: ${error.message}")
+                fsEnd()
                 rewarded = null
                 rewardedReady = false
                 preloadRewarded(app)

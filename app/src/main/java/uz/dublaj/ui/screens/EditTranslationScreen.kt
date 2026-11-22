@@ -46,7 +46,8 @@ import uz.dublaj.ui.viewmodel.PipelineViewModel
 @Composable
 fun EditTranslationScreen(
     vm: PipelineViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onDubStarted: () -> Unit = onBack
 ) {
     val units by vm.translationUnits.collectAsState()
     val context = LocalContext.current
@@ -57,6 +58,9 @@ fun EditTranslationScreen(
     val previewPhase by vm.previewState.collectAsState()
     val videoUri by vm.videoUri.collectAsState()
     val busy by vm.busy.collectAsState()
+    val cfg by vm.config.collectAsState()
+    val models by vm.models.collectAsState()
+    val geminiOk = uz.dublaj.translate.splitApiKeys(cfg.geminiKey).isNotEmpty()
     val cs = MaterialTheme.colorScheme
     val pending = units.count { it.check }
     val withVoice = units.count { it.hasUserVoice }
@@ -119,6 +123,9 @@ fun EditTranslationScreen(
                         "• ⋮ → Loyihani faylga saqlash: tarjima va sozlamalarni boshqa telefonda ochish uchun (video va API kalit kirmaydi).\n" +
                         "• «Keyingi muammo» tugmasi ⚠ belgili gapga o'tkazadi.\n" +
                         "• Mikrofon — o'z ovozingiz bilan yozish.\n" +
+                        "• Usul: Avto / ONNX / Gemini / O'zim — shu gapni qaysi ovoz bilan dublyaj qilishni tanlaysiz (▶ ham shu usulda chaladi).\n" +
+                        "• «Qayta dublyaj» (pastda) — tayyor gaplar qayta ovozlanmaydi, faqat o'zgartirilganlari ovozlanadi.\n" +
+                        "• Nusxa / joylash tugmalari: asl matn va tarjima yonida. Joylagandan keyin «Qaytarish» chiqadi.\n" +
                         "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
                         "• Ovoz belgisi «—» — ONNX ovozining o'z tembri (o'zgartirilmaydi).\n" +
                         "• ⋮ menyusidan hamma gaplar ovozini (erkak / ayol / bola / avtomatik / asl) birdan o'zgartirish mumkin."
@@ -162,6 +169,21 @@ fun EditTranslationScreen(
     Scaffold(
         containerColor = cs.background,
         snackbarHost = { SnackbarHost(snackbarState) },
+        bottomBar = {
+            if (!imeVisible && units.isNotEmpty()) {
+                Surface(tonalElevation = 3.dp, color = cs.surface) {
+                    Button(
+                        onClick = { if (vm.approveAndDub(context)) onDubStarted() },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Qayta dublyaj")
+                    }
+                }
+            }
+        },
         floatingActionButton = {
             if (pending > 0 && !imeVisible) {
                 ExtendedFloatingActionButton(
@@ -372,6 +394,9 @@ fun EditTranslationScreen(
                         vm = vm,
                         busy = busy,
                         slotSec = slotSec,
+                        geminiOk = geminiOk,
+                        onnxOk = models.vits,
+                        autoLabel = if (cfg.voiceEngine == "gemini") "Avto · Gemini" else "Avto · ONNX",
                         showSpeakers = speakersOn,
                         previewing = previewUnit == unit.id,
                         preparing = previewUnit == unit.id && previewPhase?.startsWith("Ovoz tayyor") == true,
@@ -394,6 +419,18 @@ fun EditTranslationScreen(
     }
 }
 
+@Composable
+private fun CopyPasteButtons(onCopy: () -> Unit, onPaste: () -> Unit, pasteEnabled: Boolean) {
+    Column {
+        IconButton(onClick = onCopy, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.ContentCopy, "Nusxalash", Modifier.size(18.dp))
+        }
+        IconButton(onClick = onPaste, enabled = pasteEnabled, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Default.ContentPaste, "Joylash", Modifier.size(18.dp))
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UnitCard(
@@ -402,6 +439,9 @@ private fun UnitCard(
     vm: PipelineViewModel,
     busy: Boolean,
     slotSec: Double,
+    geminiOk: Boolean,
+    onnxOk: Boolean,
+    autoLabel: String,
     showSpeakers: Boolean,
     previewing: Boolean,
     preparing: Boolean,
@@ -454,6 +494,28 @@ private fun UnitCard(
         }
     }
 
+    fun copyText(t: String) {
+        if (uz.dublaj.util.Clip.copy(context, t)) {
+            if (!uz.dublaj.util.Clip.ownToast) vm.toast("Nusxalandi")
+        } else vm.toast("Nusxalab bo'lmadi")
+    }
+
+    fun pasteInto(orig: Boolean) {
+        val t = uz.dublaj.util.Clip.paste(context)
+        if (t == null) vm.toast("Almashish buferi bo'sh")
+        else vm.pasteText(index, t.trim(), orig)
+    }
+
+    fun pickOwnVoice() {
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                val f = vm.segmentVoiceFile(context, unit.id)
+                f.isFile && f.length() > 44
+            }
+            if (ok) vm.setVoiceMode(index, "", true) else startRec()
+        }
+    }
+
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
@@ -488,7 +550,7 @@ private fun UnitCard(
                 }
                 // TTS preview: shu matn va shu rol bilan, dublyajdagidek
                 FilledTonalIconButton(
-                    onClick = { vm.togglePreview(context, unit.id, text, unit.voiceRole, slotSec) },
+                    onClick = { vm.togglePreview(context, unit.id, text, unit.voiceRole, slotSec, unit.engine) },
                     enabled = !busy && !recording
                 ) {
                     when {
@@ -517,6 +579,36 @@ private fun UnitCard(
                 }
             }
 
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("Usul:", style = MaterialTheme.typography.labelMedium, color = cs.onSurfaceVariant)
+                listOf("" to autoLabel, "onnx" to "ONNX", "gemini" to "Gemini").forEach { (id, label) ->
+                    FilterChip(
+                        selected = !unit.hasUserVoice && unit.engine == id,
+                        enabled = !recording,
+                        onClick = { vm.setVoiceMode(index, id, false) },
+                        label = { Text(label) }
+                    )
+                }
+                FilterChip(
+                    selected = unit.hasUserVoice,
+                    enabled = !recording,
+                    onClick = { pickOwnVoice() },
+                    label = { Text("O'zim 🎤") }
+                )
+            }
+            if (!unit.hasUserVoice && ((unit.engine == "gemini" && !geminiOk) || (unit.engine == "onnx" && !onnxOk))) {
+                Text(
+                    if (unit.engine == "gemini") "Gemini kaliti yo'q (Sozlamalar → Tarjima). Dublyajda ONNX ishlatiladi."
+                    else "ONNX ovoz fayllari yo'q (Sozlamalar → Ovoz).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cs.error
+                )
+            }
+
             if (showSpeakers) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -533,37 +625,51 @@ private fun UnitCard(
                 }
             }
 
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = cs.surfaceVariant.copy(alpha = 0.55f),
-                modifier = Modifier.fillMaxWidth().clickable { onSeek() }
-            ) {
-                Text(
-                    unit.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = cs.onSurfaceVariant,
-                    modifier = Modifier.padding(10.dp)
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = cs.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.weight(1f).clickable { onSeek() }
+                ) {
+                    Text(
+                        unit.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = cs.onSurfaceVariant,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                CopyPasteButtons(
+                    onCopy = { copyText(unit.text) },
+                    onPaste = { pasteInto(true) },
+                    pasteEnabled = !busy && !recording
                 )
             }
 
-            OutlinedTextField(
-                value = text,
-                onValueChange = {
-                    text = it
-                    vm.updateUzText(index, it)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .bringIntoViewRequester(bringIntoView)
-                    .onFocusEvent { f ->
-                        if (f.isFocused) scope.launch {
-                            delay(350)   // klaviatura ochilib bo'lishini kutamiz
-                            bringIntoView.bringIntoView()
-                        }
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        vm.updateUzText(index, it)
                     },
-                shape = MaterialTheme.shapes.medium,
-                label = { Text("O'zbekcha") }
-            )
+                    modifier = Modifier
+                        .weight(1f)
+                        .bringIntoViewRequester(bringIntoView)
+                        .onFocusEvent { f ->
+                            if (f.isFocused) scope.launch {
+                                delay(350)   // klaviatura ochilib bo'lishini kutamiz
+                                bringIntoView.bringIntoView()
+                            }
+                        },
+                    shape = MaterialTheme.shapes.medium,
+                    label = { Text("O'zbekcha") }
+                )
+                CopyPasteButtons(
+                    onCopy = { copyText(text) },
+                    onPaste = { pasteInto(false) },
+                    pasteEnabled = !busy && !recording
+                )
+            }
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -173,18 +173,25 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
             )
         }
         composable(Routes.EDIT) {
-            EditTranslationScreen(vm = vm, onBack = { navController.popBackStack() })
+            EditTranslationScreen(
+                vm = vm,
+                onBack = { navController.popBackStack() },
+                onDubStarted = { navController.popBackStack(Routes.HOME, false) }
+            )
         }
         composable(Routes.QUEUE) {
             QueueScreen(vm = vm, onBack = { navController.popBackStack() })
         }
         composable(Routes.HISTORY) {
             HistoryScreen(
+                vm = vm,
                 onBack = { navController.popBackStack() },
                 onPlay = { f ->
                     vm.openPlayer(Uri.fromFile(f))
                     navController.navigate(Routes.PLAYER)
-                }
+                },
+                onEdit = { navController.navigate(Routes.EDIT) },
+                onMontage = { navController.navigate(Routes.MONTAJ) }
             )
         }
         composable(Routes.PLAYER) {

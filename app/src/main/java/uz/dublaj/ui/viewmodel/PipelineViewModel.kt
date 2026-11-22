@@ -281,7 +281,7 @@ class PipelineViewModel : ViewModel() {
      * Tahrir ekranidagi ▶: gapni aynan dublyajdagidek (rol + vaqt oralig'iga moslab) chaladi.
      * Shu gap chalinayotgan bo'lsa — to'xtatadi.
      */
-    fun togglePreview(context: Context, unitId: Int, text: String, role: String, slotSec: Double) {
+    fun togglePreview(context: Context, unitId: Int, text: String, role: String, slotSec: Double, engine: String = "") {
         if (_previewUnit.value == unitId && previewJob?.isActive == true) {
             if (_preview.value?.startsWith("Ijro") == true) {
                 PcmPlayer.stop()
@@ -291,11 +291,11 @@ class PipelineViewModel : ViewModel() {
             }
             return
         }
-        previewVoice(context, text, role, slotSec, unitId)
+        previewVoice(context, text, role, slotSec, unitId, engine)
     }
 
-    /** Joriy sozlamalar bilan matnni sintez qilib chaladi. Dublyaj paytida o'chiq (xotira). */
-    fun previewVoice(context: Context, text: String, role: String = "", slotSec: Double? = null, unitId: Int = -1) {
+    /** Joriy sozlamalar bilan matnni sintez qilib chaladi. Dublyaj paytida o'chiq (xotira). [engine]: "" = umumiy sozlama, "onnx", "gemini". */
+    fun previewVoice(context: Context, text: String, role: String = "", slotSec: Double? = null, unitId: Int = -1, engine: String = "") {
         val app = context.applicationContext
         if (isBusy) {
             _preview.value = "Dublyaj/tarjima ishlayotganda tinglab bo'lmaydi"
@@ -303,6 +303,12 @@ class PipelineViewModel : ViewModel() {
             return
         }
         if (text.isBlank()) return
+        val hasKey = uz.dublaj.translate.splitApiKeys(_config.value.geminiKey).isNotEmpty()
+        if (engine == "gemini" && !hasKey) {
+            toast("Gemini kaliti kerak: Sozlamalar → Tarjima (AI)")
+            return
+        }
+        val wantGem = when (engine) { "gemini" -> true; "onnx" -> false; else -> _config.value.useGeminiTts() }
         if (previewJob?.isActive == true && _preview.value?.startsWith("Ovoz tayyorlanmoqda") == true) return
         PcmPlayer.stop()
         previewJob?.cancel()
@@ -312,7 +318,7 @@ class PipelineViewModel : ViewModel() {
                 _preview.value = "Ovoz tayyorlanmoqda…"
                 val cfg = _config.value
                 val (pcm, sr) = withContext(Dispatchers.Default) {
-                    if (cfg.useGeminiTts()) {
+                    if (wantGem) {
                         // Onlayn Gemini ovozi: rolga mos tayyor ovoz (ton siljitilmaydi)
                         val norm = uz.dublaj.text.TextNormalizer.fromAssets(app)
                         val seg = uz.dublaj.tts.GeminiTtsClient(cfg.geminiKey, cfg.gemTtsModel)
@@ -517,6 +523,58 @@ class PipelineViewModel : ViewModel() {
         _approved.value = false
     }
 
+    /** «Joylash» tugmasi: gap matnini almashtiradi; «Qaytarish» bilan eskisi tiklanadi. [orig] = true: asl matn (Whisper xato eshitgan bo'lsa), keyin «qayta tarjima» yangi matndan olinadi. */
+    fun pasteText(index: Int, newText: String, orig: Boolean) {
+        val list = _translationUnits.value.toMutableList()
+        if (index !in list.indices) return
+        val old = list[index]
+        if ((if (orig) old.text else old.uzText) == newText) return
+        pushUndo(if (orig) "Asl matn joylandi (#${old.id})" else "Tarjima joylandi (#${old.id})", oldTexts = listOf(old))
+        list[index] = if (orig) old.copy(text = newText) else old.copy(uzText = newText, check = false, issue = null)
+        _translationUnits.value = list
+        _approved.value = false
+        persistUnits()
+    }
+
+    /** Bitta gap uchun ovoz usuli: [engine] "" (umumiy) / "onnx" / "gemini" yoki [own] = o'z yozgan ovozim. */
+    fun setVoiceMode(index: Int, engine: String, own: Boolean) {
+        val list = _translationUnits.value.toMutableList()
+        if (index !in list.indices) return
+        list[index] = list[index].copy(engine = engine, hasUserVoice = own)
+        _translationUnits.value = list
+        _approved.value = false
+        persistUnits()
+    }
+
+    private fun persistUnits() {
+        val ctx = appCtx ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            try { pipeline.saveTranslation(ctx, _translationUnits.value) } catch (_: Exception) {}
+        }
+    }
+
+    /** Tahrir ekranidan: tarjimani tasdiqlab, darhol dublyaj boshlaydi (tayyor ovozlar keshdan olinadi, faqat o'zgarganlari qayta ovozlanadi). */
+    fun approveAndDub(context: Context): Boolean {
+        val units = _translationUnits.value
+        if (units.isEmpty()) return false
+        if (isBusy) { toast("Boshqa jarayon ketyapti — biroz kuting"); return false }
+        val pending = units.count { it.check && it.issue?.startsWith(uz.dublaj.data.DUB_ISSUE_PREFIX) != true }
+        if (pending > 0) {
+            toast("$pending ta gap tarjima qilinmagan (⚠). Avval ularni tuzating.")
+            return false
+        }
+        val app = context.applicationContext
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                pipeline.saveTranslation(app, units)
+                pipeline.markApproved(app)
+            }
+            _approved.value = true
+            dub(app)
+        }
+        return true
+    }
+
     // ------------------------------------------------------------------ loyiha fayli (.dublaj)
 
     private var pendingProject: uz.dublaj.util.ProjectFile.Data? = null
@@ -555,6 +613,7 @@ class PipelineViewModel : ViewModel() {
                     uz.dublaj.util.ProjectFile.parse(text)
                 }
                 pendingProject = data
+                pendingHistory = null
                 toast("Loyiha o'qildi: ${data.units.size} gap${if (data.title.isNotBlank()) " (${data.title})" else ""}. Endi shu videoni tanlang.")
                 onReady()
             } catch (e: IllegalArgumentException) {
@@ -566,8 +625,46 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
+    private var pendingHistory: File? = null
+
+    /**
+     * Tarixdagi videoning tarjimasini tahrirlash uchun tayyorlaydi. Asl video ilovada qolgan bo'lsa darhol ochadi
+     * ([onReady]); topilmasa [onNeedVideo] chaqiriladi: ekran asl videoni tanlatib, [applyHistoryVideo] ni chaqiradi.
+     */
+    fun openHistoryText(context: Context, video: File, onNeedVideo: () -> Unit, onReady: () -> Unit) {
+        if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
+        val app = context.applicationContext
+        viewModelScope.launch {
+            val data = withContext(Dispatchers.IO) { uz.dublaj.util.HistoryStore.loadProject(video) }
+            if (data == null) {
+                toast("Bu video uchun tahrirlash ma'lumoti topilmadi")
+                return@launch
+            }
+            pendingProject = data
+            pendingHistory = video
+            val src = withContext(Dispatchers.IO) { uz.dublaj.util.HistoryStore.srcOf(video) }
+            if (src != null) applyProject(app, Uri.fromFile(src), onReady)
+            else {
+                toast("Asl video ilovada qolmagan. Shu videoning asl (dublyajsiz) faylini tanlang.")
+                onNeedVideo()
+            }
+        }
+    }
+
+    fun applyHistoryVideo(context: Context, uri: Uri, onReady: () -> Unit) = applyProject(context, uri, onReady)
+
+    /** Tarixdagi videoning montajini ochadi (kerak bo'lsa arxivdan tiklaydi). */
+    fun openHistoryMontage(context: Context, video: File, onReady: () -> Unit) {
+        if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
+        val app = context.applicationContext
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { uz.dublaj.pipeline.MontageArchive.restore(pipeline.work(app), video) }
+            if (ok) onReady() else toast("Bu video uchun montaj ma'lumoti topilmadi")
+        }
+    }
+
     /** Loyiha + tanlangan video: video nusxalanadi, gaplar yuklanadi; tasdiqlash qoladi (qayta tasdiqlang). */
-    fun applyProject(context: Context, videoUri: Uri) {
+    fun applyProject(context: Context, videoUri: Uri, onDone: (() -> Unit)? = null) {
         val data = pendingProject ?: return
         if (isBusy) { toast("Hozir jarayon ketyapti. Tugashini kuting yoki bekor qiling."); return }
         val app = context.applicationContext
@@ -577,6 +674,7 @@ class PipelineViewModel : ViewModel() {
                 _state.value = PipelineState.Running("Loyiha ochilmoqda", 0.1f, "Video nusxalanmoqda…")
                 pipeline.attachVideo(app, videoUri)
                 pipeline.clearApproval(app)
+                pendingHistory?.let { uz.dublaj.util.HistoryStore.restoreVoices(it, pipeline.work(app)) }
             }
             if (_videoUri.value != videoUri) {
                 // masalan, bepul versiyada video juda uzun bo'lib, rad etilgan
@@ -590,8 +688,10 @@ class PipelineViewModel : ViewModel() {
             _approved.value = false
             withContext(Dispatchers.IO) { pipeline.saveTranslation(app, data.units) }
             pendingProject = null
+            pendingHistory = null
             _state.value = PipelineState.Idle
             toast("Loyiha ochildi ✓ Tekshirib, «Tasdiqlash» va «Dublyaj» ni bosing.")
+            onDone?.invoke()
         }
     }
 
@@ -630,7 +730,7 @@ class PipelineViewModel : ViewModel() {
             var x = u
             e.roles?.get(u.id)?.let { x = x.copy(voiceRole = it) }
             e.speakers?.get(u.id)?.let { x = x.copy(speaker = it) }
-            e.texts?.get(u.id)?.let { x = x.copy(uzText = it.uzText, check = it.check, issue = it.issue) }
+            e.texts?.get(u.id)?.let { x = x.copy(text = it.text, uzText = it.uzText, check = it.check, issue = it.issue) }
             x
         }
         _approved.value = false

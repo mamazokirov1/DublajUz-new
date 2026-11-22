@@ -42,6 +42,9 @@ class MontageProject(
     val title: String,
     val clips: List<MontageClip>
 ) {
+    /** Shu loyiha qaysi tayyor videoga (output/ ichidagi fayl nomi) tegishli. Tarixdan qayta ochish uchun. */
+    @Volatile var outName: String = ""
+
     val origWav: File get() = File(dir, "orig.wav")
     val previewWav: File get() = File(dir, "preview.wav")
     private val json: File get() = File(dir, "project.json")
@@ -65,7 +68,7 @@ class MontageProject(
         }
         val root = JSONObject()
             .put("v", 1).put("video", videoPath).put("sr", sr)
-            .put("duration", duration).put("title", title).put("clips", arr)
+            .put("duration", duration).put("title", title).put("out", outName).put("clips", arr)
         val tmp = File(dir, "project.json.tmp")
         tmp.writeText(root.toString())
         if (!tmp.renameTo(json)) { json.writeText(root.toString()); tmp.delete() }
@@ -96,6 +99,7 @@ class MontageProject(
                 }
                 if (clips.isEmpty()) null
                 else MontageProject(dir, r.getString("video"), r.getInt("sr"), r.getDouble("duration"), r.optString("title", ""), clips)
+                    .also { it.outName = r.optString("out", "") }
             }
         } catch (e: Exception) {
             Timber.w(e, "Montaj loyihasi o'qilmadi")
