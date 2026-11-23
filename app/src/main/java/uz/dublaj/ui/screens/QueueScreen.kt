@@ -140,17 +140,17 @@ fun QueueScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                 }
             }
             items(queue, key = { it.id }) { item ->
-                QueueRow(item, onRemove = { vm.removeFromQueue(item.id) })
+                QueueRow(item, onRemove = { vm.removeFromQueue(item.id) }, modifier = Modifier.animateItem())
             }
         }
     }
 }
 
 @Composable
-private fun QueueRow(item: QueueItem, onRemove: () -> Unit) {
+private fun QueueRow(item: QueueItem, onRemove: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
+    Card(modifier = modifier, shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 when (item.status) {

@@ -1218,6 +1218,18 @@ class DubbingPipeline {
         }
     }
 
+    /** Videodan ajratilgan asl matn: vaqt belgilari bilan, to'liq gaplarga birlashtirilgan. */
+    fun timedTranscript(context: Context): List<TranscriptUnit> {
+        val dir = ensure(context)
+        if (!dir.transcriptJson.isFile) return emptyList()
+        return try {
+            SentenceMerger.merge(loadTranscript(context))
+        } catch (e: Exception) {
+            Timber.w(e, "timedTranscript")
+            emptyList()
+        }
+    }
+
     /** Ixtiyoriy o'zbekcha matnni ovozga aylantirib, WAV fayl qiladi (video vaqtlari yo'q). */
     fun synthesizeText(
         context: Context,

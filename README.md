@@ -138,3 +138,8 @@ Dependency: `billing-ktx:7.1.1` yoqilgan.
 - Har bir gap uchun ovoz usuli (Avto, ONNX, Gemini, O'zim) va «Qayta dublyaj».
 - Montajda tanlangan ovozni qayta dublyaj qilish tugmasi.
 - Ilova ochilganda App Open reklamasi (Secret: `ADMOB_APP_OPEN_ID`).
+
+## v34 yangiliklari
+- «Faqat matn» rejimi: videodan matn vaqt belgilari bilan va yaxlit ko'rinishda (nusxa, TXT, SRT); AI kalitisiz.
+- Tarjima: ⋮ menyusida «Xatolarni qayta tarjima» (faqat ⚠ gaplar) va «Hammasini qayta tarjima».
+- Dizayn: bosh ekranda ixcham tugmalar qatori, animatsiyali kartalar va hero, ro'yxatlarda silliq joy almashish, ovoz sozlamalari tahrirda yig'iladigan blokda.

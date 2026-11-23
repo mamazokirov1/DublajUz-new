@@ -208,45 +208,19 @@ fun HomeScreen(
                 onTools = onTextTools
             )
 
-            // ---- tezkor amallar: Matn → ovoz KO'RINARLI joyda
+            // ---- tezkor amallar: bitta ixcham qator
             Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp).padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 14.dp).appear(0),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                QuickActionTile(
-                    title = "Matn → ovoz",
-                    subtitle = "Yozing yoki TXT fayl yuklang — o'zbekcha ovoz",
-                    icon = Icons.Default.RecordVoiceOver,
-                    highlighted = true,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    onClick = { vm.requestTextTab(1); onTextTools() }
-                )
-                QuickActionTile(
-                    title = "Videodan matn",
-                    subtitle = "Videodagi gaplarni matn qilib olish",
-                    icon = Icons.Default.TextSnippet,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    onClick = { vm.requestTextTab(0); onTextTools() }
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 16.dp).padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                QuickActionTile(
-                    title = "Navbat",
-                    subtitle = if (config.isPro) "Ko'p videoni ketma-ket dublyaj" else "Ko'p video (bepulda ${UsageStore.FREE_QUEUE_ITEMS} ta)",
-                    icon = Icons.Default.Queue,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    onClick = onQueue
-                )
-                QuickActionTile(
-                    title = "Tarix",
-                    subtitle = "Tayyor videolar",
-                    icon = Icons.Default.History,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    onClick = onHistory
-                )
+                MiniTile("Matn → ovoz", Icons.Default.RecordVoiceOver, Modifier.weight(1f), highlighted = true) {
+                    vm.requestTextTab(1); onTextTools()
+                }
+                MiniTile("Videodan matn", Icons.Default.TextSnippet, Modifier.weight(1f)) {
+                    vm.requestTextTab(0); onTextTools()
+                }
+                MiniTile("Navbat", Icons.Default.Queue, Modifier.weight(1f), onClick = onQueue)
+                MiniTile("Tarix", Icons.Default.History, Modifier.weight(1f), onClick = onHistory)
             }
 
             // ---- limit badge
@@ -408,7 +382,8 @@ fun HomeScreen(
                 StepCard(
                     number = 1, title = "Video tanlang",
                     summary = videoUri?.lastPathSegment?.substringAfterLast('/'),
-                    state = stepState(1)
+                    state = stepState(1),
+                    modifier = Modifier.appear(2)
                 ) {
                     val info by rememberVideoInfo(uri = videoUri)
                     if (videoUri == null) {
@@ -454,7 +429,8 @@ fun HomeScreen(
                 StepCard(
                     number = 2, title = "Matn va tarjima",
                     summary = if (hasTranslation) "${units.size} gap tarjima qilindi" else null,
-                    state = stepState(2)
+                    state = stepState(2),
+                    modifier = Modifier.appear(3)
                 ) {
                     BigButton(
                         text = "Matnni ajratib tarjima qilish",
@@ -505,7 +481,8 @@ fun HomeScreen(
                 StepCard(
                     number = 3, title = "Tekshirish va tasdiqlash",
                     summary = if (approved) "Tasdiqlangan" else null,
-                    state = stepState(3)
+                    state = stepState(3),
+                    modifier = Modifier.appear(4)
                 ) {
                     val pending = units.count { it.check }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -538,7 +515,8 @@ fun HomeScreen(
                 StepCard(
                     number = 4, title = "Dublyaj",
                     summary = null,
-                    state = stepState(4)
+                    state = stepState(4),
+                    modifier = Modifier.appear(5)
                 ) {
                     BigButton(
                         text = "Dublyaj qilish",
@@ -692,7 +670,7 @@ private fun BigButton(text: String, icon: androidx.compose.ui.graphics.vector.Im
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp).pressScale(0.97f),
         shape = MaterialTheme.shapes.medium
     ) {
         Icon(icon, null)

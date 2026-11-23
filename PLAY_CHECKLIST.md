@@ -83,3 +83,6 @@
 To'liq audit natijasi, do'kon matnlari, Data safety/Content rating javoblari va chiqarish tartibi `play/` papkasida:
 - `play/01-dokon-matnlari.md`, `play/02-app-content.md`, `play/03-chiqarish-tartibi.md`, `play/assets/` (ikona va banner).
 - Eng muhim ochiq masala: ovoz modeli litsenziyasi va yangi akkaunt uchun 12 tester × 14 kun yopiq test.
+
+## v34: dizayn va matn rejimi
+Yangi funksiyalar Data safety'ga ta'sir qilmaydi (yangi ruxsat yoki so'rov yo'q). Do'kon skrinshotlarini v34 dizayni bilan oling.

@@ -130,6 +130,7 @@ fun HistoryScreen(
                 }
                 items(list, key = { it.video.absolutePath }) { entry ->
                     HistoryItem(
+                        Modifier.animateItem(),
                         entry,
                         onDelete = { toDelete = entry },
                         onChanged = { refresh++ },
@@ -188,6 +189,7 @@ private fun dateOf(ms: Long): String =
 
 @Composable
 private fun HistoryItem(
+    modifier: Modifier = Modifier,
     entry: HistoryEntry,
     onDelete: () -> Unit,
     onChanged: () -> Unit,
@@ -204,7 +206,7 @@ private fun HistoryItem(
 
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
 
-    Card(shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
+    Card(modifier = modifier, shape = MaterialTheme.shapes.large, colors = CardDefaults.cardColors(containerColor = cs.surface)) {
         Column {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(cs.surfaceVariant)) {
                 info?.thumb?.let {

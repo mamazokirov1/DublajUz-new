@@ -58,6 +58,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
     val units by vm.translationUnits.collectAsState()
     val hasTranscript by vm.hasTranscript.collectAsState()
     val original by vm.plainOriginal.collectAsState()
+    val timed by vm.timedOriginal.collectAsState()
     val audio by vm.audioResult.collectAsState()
     val host = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableIntStateOf(vm.consumeTextTab()) }
@@ -127,8 +128,8 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         if (t == 0) {
                             Text(
-                                "Videodagi gaplarni vaqt belgilarisiz, bitta oddiy matn qilib oladi. " +
-                                    "Uni nusxalash, ulashish yoki o'zbekcha ovozga aylantirish mumkin.",
+                                "Videodagi nutqni matnga aylantiradi: vaqt belgilari bilan va yaxlit matn ko'rinishida. " +
+                                    "«Faqat matn» tarjimasiz va AI kalitisiz ishlaydi.",
                                 style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant
                             )
                             if (videoUri == null) {
@@ -146,28 +147,37 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Button(
-                                        onClick = { vm.transcribeAndTranslate(context) },
-                                        enabled = !busy && models.whisper && config.onlineReady,
+                                        onClick = { vm.transcribeOnly(context) },
+                                        enabled = !busy && models.whisper,
                                         modifier = Modifier.heightIn(min = 52.dp)
                                     ) {
                                         Icon(Icons.Default.TextSnippet, null)
                                         Spacer(Modifier.width(8.dp))
-                                        Text("Matnni ajratib olish")
+                                        Text("Faqat matn")
+                                    }
+                                    FilledTonalButton(
+                                        onClick = { vm.transcribeAndTranslate(context) },
+                                        enabled = !busy && models.whisper && config.onlineReady,
+                                        modifier = Modifier.heightIn(min = 52.dp)
+                                    ) {
+                                        Icon(Icons.Default.Translate, null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Matn + tarjima")
                                     }
                                     OutlinedButton(
                                         onClick = { picker.launch("video/*") }, enabled = !busy,
                                         modifier = Modifier.heightIn(min = 52.dp)
                                     ) { Text("Boshqa video") }
                                 }
-                                if (!models.whisper || !config.onlineReady) {
+                                if (!models.whisper) {
                                     Text(
-                                        "Avval Sozlamalardan matn aniqlash va tarjima komponentlarini yuklab oling.",
+                                        "Avval Sozlamalardan matn aniqlash (Whisper) komponentini yuklab oling.",
                                         style = MaterialTheme.typography.bodySmall, color = cs.tertiary
                                     )
                                 }
                             }
-                            if (original.isNotBlank()) {
-                                TextBlock("Asl matn (videodagi til)", original, "asl_matn", null)
+                            if (timed.isNotEmpty()) {
+                                TranscriptView(timed, original, vm)
                             }
                             if (uzText.isNotBlank()) {
                                 TextBlock(
@@ -470,6 +480,94 @@ private fun AudioCard(file: File, vm: PipelineViewModel) {
                     Icon(Icons.Default.SaveAlt, null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Saqlash")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptView(timed: List<uz.dublaj.data.TranscriptUnit>, plain: String, vm: PipelineViewModel) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    var mode by rememberSaveable { mutableIntStateOf(0) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.animateContentSize()) {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            SegmentedButton(
+                selected = mode == 0, onClick = { mode = 0 },
+                shape = SegmentedButtonDefaults.itemShape(0, 2)
+            ) { Text("Vaqtli (${timed.size})") }
+            SegmentedButton(
+                selected = mode == 1, onClick = { mode = 1 },
+                shape = SegmentedButtonDefaults.itemShape(1, 2)
+            ) { Text("Yaxlit matn") }
+        }
+        Crossfade(targetState = mode, label = "trmode") { m ->
+            if (m == 1) {
+                TextBlock("Asl matn (videodagi til)", plain, "asl_matn", null)
+            } else {
+                Card(
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(containerColor = cs.surface),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(vertical = 8.dp)) {
+                        timed.forEachIndexed { i, u ->
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Surface(shape = MaterialTheme.shapes.small, color = cs.primaryContainer) {
+                                    Text(
+                                        uz.dublaj.ui.components.fmtTime(u.start),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        style = MaterialTheme.typography.labelMedium, color = cs.onPrimaryContainer
+                                    )
+                                }
+                                SelectionContainer(Modifier.weight(1f)) {
+                                    Text(u.text.trim(), style = MaterialTheme.typography.bodyMedium)
+                                }
+                                IconButton(
+                                    onClick = {
+                                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        cm.setPrimaryClip(ClipData.newPlainText("matn", u.text.trim()))
+                                        Toast.makeText(context, "Nusxalandi ✓", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) { Icon(Icons.Default.ContentCopy, "Nusxa", Modifier.size(16.dp), tint = cs.onSurfaceVariant) }
+                            }
+                            if (i < timed.lastIndex) HorizontalDivider(Modifier.padding(horizontal = 14.dp), color = cs.outlineVariant.copy(alpha = 0.5f))
+                        }
+                    }
+                }
+            }
+        }
+        if (mode == 0) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilledTonalButton(onClick = {
+                    val txt = timed.joinToString("\n") { "[" + uz.dublaj.ui.components.fmtTime(it.start) + "] " + it.text.trim() }
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("matn", txt))
+                    Toast.makeText(context, "Vaqtli matn nusxalandi ✓", Toast.LENGTH_SHORT).show()
+                }) {
+                    Icon(Icons.Default.ContentCopy, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Hammasini nusxalash")
+                }
+                FilledTonalButton(onClick = {
+                    try {
+                        val dir = WorkDir(context.applicationContext).output.apply { mkdirs() }
+                        val f = File(dir, "asl_matn_${System.currentTimeMillis()}.srt")
+                        f.writeText(vm.originalSrt())
+                        uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, f, "application/x-subrip", "SRT ni saqlash/ulashish"))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Fayl yozilmadi: ${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }) {
+                    Icon(Icons.Default.Subtitles, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("SRT")
                 }
             }
         }

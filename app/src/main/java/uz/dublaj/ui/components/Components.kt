@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -53,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import uz.dublaj.ui.theme.Brand
@@ -84,11 +86,20 @@ fun GradientHero(
                 )
             )
     ) {
+        val wave = androidx.compose.animation.core.rememberInfiniteTransition(label = "heroWave")
+        val phase by wave.animateFloat(
+            initialValue = 0f,
+            targetValue = (2 * Math.PI).toFloat(),
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(9000, easing = androidx.compose.animation.core.LinearEasing)
+            ),
+            label = "heroPhase"
+        )
         Canvas(Modifier.matchParentSize()) {
             val n = 30
             val w = size.width / n
             for (i in 0 until n) {
-                val h = size.height * (0.18f + 0.42f * abs(sin(i * 0.62f + 0.5f)))
+                val h = size.height * (0.18f + 0.42f * abs(sin(i * 0.62f + 0.5f + phase)))
                 drawRoundRect(
                     color = Color.White.copy(alpha = 0.10f),
                     topLeft = Offset(i * w + w * 0.25f, size.height - h),
@@ -127,6 +138,7 @@ fun StepCard(
     title: String,
     summary: String?,
     state: StepState,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
@@ -142,7 +154,7 @@ fun StepCard(
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "stepArrow")
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().animateContentSize(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = container),
         border = if (state == StepState.ACTIVE) BorderStroke(1.5.dp, cs.primary) else null,
@@ -228,13 +240,14 @@ fun SectionCard(
     title: String,
     subtitle: String? = null,
     initiallyExpanded: Boolean = false,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     var expanded by remember { mutableStateOf(initiallyExpanded) }
     val rotation by animateFloatAsState(if (expanded) 180f else 0f, label = "sectionArrow")
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().animateContentSize(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = cs.surface)
     ) {

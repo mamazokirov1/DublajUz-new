@@ -113,13 +113,47 @@ class PipelineViewModel : ViewModel() {
 
     private val _plainOriginal = MutableStateFlow("")
     val plainOriginal: StateFlow<String> = _plainOriginal.asStateFlow()
+    private val _timedOriginal = MutableStateFlow<List<uz.dublaj.data.TranscriptUnit>>(emptyList())
+    val timedOriginal: StateFlow<List<uz.dublaj.data.TranscriptUnit>> = _timedOriginal.asStateFlow()
 
     /** Videodan ajratilgan matnni (vaqtlarsiz) diskdan o'qiydi. */
     fun refreshPlainTexts(context: Context) {
         val app = context.applicationContext
         viewModelScope.launch {
             _plainOriginal.value = withContext(Dispatchers.IO) { pipeline.plainTranscript(app) }
+            _timedOriginal.value = withContext(Dispatchers.IO) { pipeline.timedTranscript(app) }
         }
+    }
+
+    /** Faqat matn olish (tarjimasiz, AI kalitisiz): vaqtli ro'yxat va yaxlit matn tayyor bo'ladi. */
+    fun transcribeOnly(context: Context) {
+        val uri = _videoUri.value ?: return
+        launchTask(context, "Matn ajratish") {
+            val cfg = _config.value
+            val app = context.applicationContext
+            withContext(Dispatchers.IO) {
+                pipeline.transcribe(app, uri, cfg) { p, m ->
+                    _state.value = PipelineState.Running("Matn ajratish", p, m)
+                }
+            }
+            _hasTranscript.value = true
+            _translationUnits.value = emptyList()
+            _approved.value = false
+            _plainOriginal.value = withContext(Dispatchers.IO) { pipeline.plainTranscript(app) }
+            _timedOriginal.value = withContext(Dispatchers.IO) { pipeline.timedTranscript(app) }
+            _state.value = PipelineState.Idle
+            toast("Matn tayyor ✓")
+        }
+    }
+
+    /** Asl matnni SRT ko'rinishida (vaqt belgilari bilan) qaytaradi. */
+    fun originalSrt(): String {
+        fun t(x: Double): String {
+            val ms = (x * 1000).toLong().coerceAtLeast(0)
+            return "%02d:%02d:%02d,%03d".format(ms / 3600000, ms / 60000 % 60, ms / 1000 % 60, ms % 1000)
+        }
+        return _timedOriginal.value.mapIndexed { i, u -> "${i + 1}\n${t(u.start)} --> ${t(u.end)}\n${u.text.trim()}\n" }
+            .joinToString("\n")
     }
 
     /** Tarjima qilingan (tahrir qilingan) o'zbekcha matn, bitta uzun matn sifatida. */
@@ -401,6 +435,8 @@ class PipelineViewModel : ViewModel() {
         if (isBusy) return
         _videoUri.value = uri
         _hasTranscript.value = false
+        _plainOriginal.value = ""
+        _timedOriginal.value = emptyList()
         undoStack.clear()
         _translationUnits.value = emptyList()
         _approved.value = false
@@ -926,6 +962,53 @@ class PipelineViewModel : ViewModel() {
         }
     }
 
+    /** Faqat xato (⚠) belgili gaplarni qayta tarjima qiladi; tuzatilganlari ⚠ dan chiqadi. */
+    fun retranslateFlagged(context: Context) {
+        val app = context.applicationContext
+        if (isBusy || _busy.value) { toast("Boshqa jarayon ketyapti — biroz kuting"); return }
+        if (!_config.value.onlineReady) { toast("AI kaliti kerak. Sozlamalar → Tarjima (AI)"); return }
+        val ids = _translationUnits.value.filter { it.check }.map { it.id }
+        if (ids.isEmpty()) { toast("Xatolik topilmadi ✓"); return }
+        viewModelScope.launch {
+            _busy.value = true
+            var ok = 0
+            var err: String? = null
+            try {
+                for ((k, id) in ids.withIndex()) {
+                    _modelStatus.value = "Xatolar qayta tarjima: ${k + 1}/${ids.size}"
+                    val cur = _translationUnits.value
+                    val i = cur.indexOfFirst { it.id == id }
+                    if (i < 0) continue
+                    try {
+                        _translationUnits.value = withContext(Dispatchers.IO) {
+                            pipeline.translateSingle(app, _config.value, cur, i)
+                        }
+                        ok++
+                    } catch (e: Exception) {
+                        err = friendlyError(e.message)
+                        break
+                    }
+                }
+                _approved.value = false
+            } finally {
+                _busy.value = false
+                _modelStatus.value = null
+            }
+            val left = _translationUnits.value.count { it.check }
+            toast(
+                (if (err != null) "$err\n" else "") +
+                    "$ok ta gap qayta tarjima qilindi" + if (left > 0) ", $left ta hali tekshirilsin" else " ✓"
+            )
+        }
+    }
+
+    /** Hamma gapni noldan qayta tarjima qiladi (qo'lda tahrirlar yo'qoladi). */
+    fun retranslateAll(context: Context) {
+        if (isBusy || _busy.value) { toast("Boshqa jarayon ketyapti — biroz kuting"); return }
+        if (!_config.value.onlineReady) { toast("AI kaliti kerak. Sozlamalar → Tarjima (AI)"); return }
+        translate(context, false)
+    }
+
     /** Yozilgan foydalanuvchi ovozini tinglash. */
     fun playUserVoice(context: Context, unitId: Int) {
         viewModelScope.launch {
@@ -1253,6 +1336,7 @@ class PipelineViewModel : ViewModel() {
             _translationUnits.value = emptyList()
             _approved.value = false
             _plainOriginal.value = ""
+            _timedOriginal.value = emptyList()
             _state.value = PipelineState.Idle
             _workVersion.update { it + 1 }
             toast(if (before > 0) "Tozalandi ✓ ${mb(before)} bo'shatildi" else "Tozalanadigan fayl yo'q ✓")

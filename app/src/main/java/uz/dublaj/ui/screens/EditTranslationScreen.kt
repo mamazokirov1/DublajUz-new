@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -23,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +83,8 @@ fun EditTranslationScreen(
     var showInfo by remember { mutableStateOf(false) }
     val snackbarState = remember { SnackbarHostState() }
     var showFind by remember { mutableStateOf(false) }
+    var showRetrAll by remember { mutableStateOf(false) }
+    val status by vm.modelStatus.collectAsState()
     var showSpeakers by remember { mutableStateOf(false) }
     var pendingScrollId by remember { mutableStateOf<Int?>(null) }
     val speakersOn = units.any { it.speaker > 0 }
@@ -107,6 +111,17 @@ fun EditTranslationScreen(
             }
         )
     }
+    if (showRetrAll) {
+        AlertDialog(
+            onDismissRequest = { showRetrAll = false },
+            title = { Text("Hammasini qayta tarjima qilasizmi?") },
+            text = { Text("Barcha gaplar AI bilan noldan tarjima qilinadi. Qo'lda kiritgan tahrirlaringiz va yozgan ovozlaringiz belgilari yo'qoladi. Faqat xatolarni tuzatish uchun «Xatolarni qayta tarjima» dan foydalaning.") },
+            confirmButton = {
+                TextButton(onClick = { showRetrAll = false; vm.retranslateAll(context); onDubStarted() }) { Text("Ha, hammasini") }
+            },
+            dismissButton = { TextButton(onClick = { showRetrAll = false }) { Text("Bekor qilish") } }
+        )
+    }
     if (showSpeakers) SpeakersDialog(units = units, vm = vm, onDismiss = { showSpeakers = false })
 
     if (showInfo) {
@@ -126,7 +141,7 @@ fun EditTranslationScreen(
                         "• Usul: Avto / ONNX / Gemini / O'zim — shu gapni qaysi ovoz bilan dublyaj qilishni tanlaysiz (▶ ham shu usulda chaladi).\n" +
                         "• «Qayta dublyaj» (pastda) — tayyor gaplar qayta ovozlanmaydi, faqat o'zgartirilganlari ovozlanadi.\n" +
                         "• Nusxa / joylash tugmalari: asl matn va tarjima yonida. Joylagandan keyin «Qaytarish» chiqadi.\n" +
-                        "• 🔄 — faqat shu gapni qayta tarjima qilish.\n" +
+                        "• 🔄 — faqat shu gapni qayta tarjima qilish. ⋮ → «Xatolarni qayta tarjima» faqat ⚠ gaplarni, «Hammasini qayta tarjima» hamma gapni qayta tarjima qiladi.\n" +
                         "• Ovoz belgisi «—» — ONNX ovozining o'z tembri (o'zgartirilmaydi).\n" +
                         "• ⋮ menyusidan hamma gaplar ovozini (erkak / ayol / bola / avtomatik / asl) birdan o'zgartirish mumkin."
                 )
@@ -224,6 +239,17 @@ fun EditTranslationScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = "Menyu")
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Xatolarni qayta tarjima ($pending)") },
+                                enabled = !busy && pending > 0,
+                                onClick = { menu = false; vm.retranslateFlagged(context) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Hammasini qayta tarjima…") },
+                                enabled = !busy,
+                                onClick = { menu = false; showRetrAll = true }
+                            )
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Qidirish va almashtirish…") },
                                 enabled = !busy,
@@ -377,6 +403,24 @@ fun EditTranslationScreen(
                 }
             }
 
+            androidx.compose.animation.AnimatedVisibility(visible = pending > 0 || (busy && status != null)) {
+                Surface(
+                    color = if (busy) cs.primaryContainer else cs.tertiaryContainer,
+                    shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (busy) {
+                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(10.dp))
+                            Text(status ?: "Ishlanmoqda…", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        } else {
+                            Text("⚠ $pending ta gapda xato bor", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { vm.retranslateFlagged(context) }) { Text("Qayta tarjima") }
+                        }
+                    }
+                }
+            }
             LazyColumn(
                 state = listState,
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
@@ -389,6 +433,7 @@ fun EditTranslationScreen(
                     // Dublyajdagidek: gapga keyingi gap boshigacha bo'lgan vaqt ajratiladi
                     val slotSec = ((units.getOrNull(index + 1)?.start ?: (unit.end + 1.0)) - unit.start).coerceAtLeast(0.3)
                     UnitCard(
+                        modifier = Modifier.animateItem(),
                         unit = unit,
                         index = index,
                         vm = vm,
@@ -447,7 +492,8 @@ private fun UnitCard(
     preparing: Boolean,
     highlightSeq: Boolean,
     onSeek: () -> Unit,
-    onRecorded: () -> Unit
+    onRecorded: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
@@ -516,16 +562,19 @@ private fun UnitCard(
         }
     }
 
+    val cardColor by androidx.compose.animation.animateColorAsState(
+        when {
+            highlightSeq -> cs.primaryContainer.copy(alpha = 0.5f)
+            unit.check -> cs.errorContainer.copy(alpha = 0.55f)
+            unit.hasUserVoice -> cs.tertiaryContainer.copy(alpha = 0.45f)
+            else -> cs.surface
+        },
+        label = "unitColor"
+    )
     Card(
+        modifier = modifier.animateContentSize(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                highlightSeq -> cs.primaryContainer.copy(alpha = 0.5f)
-                unit.check -> cs.errorContainer.copy(alpha = 0.55f)
-                unit.hasUserVoice -> cs.tertiaryContainer.copy(alpha = 0.45f)
-                else -> cs.surface
-            }
-        )
+        colors = CardDefaults.cardColors(containerColor = cardColor)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -569,6 +618,76 @@ private fun UnitCard(
                 )
             }
 
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = cs.surfaceVariant.copy(alpha = 0.55f),
+                    modifier = Modifier.weight(1f).clickable { onSeek() }
+                ) {
+                    Text(
+                        unit.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = cs.onSurfaceVariant,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+                CopyPasteButtons(
+                    onCopy = { copyText(unit.text) },
+                    onPaste = { pasteInto(true) },
+                    pasteEnabled = !busy && !recording
+                )
+            }
+
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = {
+                        text = it
+                        vm.updateUzText(index, it)
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .bringIntoViewRequester(bringIntoView)
+                        .onFocusEvent { f ->
+                            if (f.isFocused) scope.launch {
+                                delay(350)   // klaviatura ochilib bo'lishini kutamiz
+                                bringIntoView.bringIntoView()
+                            }
+                        },
+                    shape = MaterialTheme.shapes.medium,
+                    label = { Text("O'zbekcha") }
+                )
+                CopyPasteButtons(
+                    onCopy = { copyText(text) },
+                    onPaste = { pasteInto(false) },
+                    pasteEnabled = !busy && !recording
+                )
+            }
+
+            var more by remember(unit.id) { mutableStateOf(false) }
+            val roleLbl = when (unit.voiceRole) { "erkak" -> "Erkak"; "ayol" -> "Ayol"; "bola" -> "Bola"; else -> "Asl ovoz" }
+            val engLbl = when {
+                unit.hasUserVoice -> "O'zim 🎤"
+                unit.engine == "onnx" -> "ONNX"
+                unit.engine == "gemini" -> "Gemini"
+                else -> autoLabel
+            }
+            val arrow by androidx.compose.animation.core.animateFloatAsState(if (more || recording) 180f else 0f, label = "moreArrow")
+            Surface(
+                onClick = { more = !more },
+                shape = MaterialTheme.shapes.medium,
+                color = cs.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, null, Modifier.size(18.dp), tint = cs.primary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Ovoz: $roleLbl · $engLbl", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ExpandMore, null, Modifier.size(20.dp).rotate(arrow), tint = cs.onSurfaceVariant)
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(visible = more || recording) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("" to "—", "erkak" to "Erkak", "ayol" to "Ayol", "bola" to "Bola").forEach { (id, label) ->
                     FilterChip(
@@ -625,52 +744,6 @@ private fun UnitCard(
                 }
             }
 
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = cs.surfaceVariant.copy(alpha = 0.55f),
-                    modifier = Modifier.weight(1f).clickable { onSeek() }
-                ) {
-                    Text(
-                        unit.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = cs.onSurfaceVariant,
-                        modifier = Modifier.padding(10.dp)
-                    )
-                }
-                CopyPasteButtons(
-                    onCopy = { copyText(unit.text) },
-                    onPaste = { pasteInto(true) },
-                    pasteEnabled = !busy && !recording
-                )
-            }
-
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = {
-                        text = it
-                        vm.updateUzText(index, it)
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .bringIntoViewRequester(bringIntoView)
-                        .onFocusEvent { f ->
-                            if (f.isFocused) scope.launch {
-                                delay(350)   // klaviatura ochilib bo'lishini kutamiz
-                                bringIntoView.bringIntoView()
-                            }
-                        },
-                    shape = MaterialTheme.shapes.medium,
-                    label = { Text("O'zbekcha") }
-                )
-                CopyPasteButtons(
-                    onCopy = { copyText(text) },
-                    onPaste = { pasteInto(false) },
-                    pasteEnabled = !busy && !recording
-                )
-            }
-
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -708,6 +781,8 @@ private fun UnitCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant
                 )
+            }
+                }
             }
         }
     }
