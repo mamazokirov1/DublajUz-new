@@ -21,7 +21,7 @@
 - Setup → License testing: o'z Gmail'ingizni qo'shing (test xarid uchun).
 
 ## D. Maxfiylik siyosati URL
-1. `PRIVACY.md` dagi email'ni o'zingiznikiga almashtiring, `docs/index.html` dagi matnni ham (yoki skriptni qayta ishga tushiring).
+1. `PRIVACY.md` va `docs/index.html` v33 da yangilangan (mikrofon, AI provayderlar, App Open). Emailni o'zingiznikiga almashtirsangiz, ikkalasida ham o'zgartiring.
 2. GitHub → Settings → Pages → Branch: `main`, Folder: `/docs` → Save.
 3. URL: `https://<foydalanuvchi>.github.io/DublajUz-new/` — Play Console → App content → Privacy policy.
 
@@ -78,3 +78,8 @@
   - Ko'rsatilmaydi: Pro'da; birinchi ishga tushishda (onboarding tugamaguncha); boshqa to'liq ekran reklamadan keyin 15 s ichida.
   - Ko'rsatiladi: sovuq ochilganda (reklama 8 s ichida yuklansa) va ilova 60 s dan ko'p fonda bo'lib qaytganda; ikki marta orasida kamida 2 daqiqa.
   - Play siyosati: reklama kutilmagan joyda chiqmasligi kerak; App Open Google tomonidan aynan ilova ochilishi uchun ruxsat etilgan format. Data safety'da reklama deklaratsiyasi o'zgarmaydi.
+
+## v33: Play audit
+To'liq audit natijasi, do'kon matnlari, Data safety/Content rating javoblari va chiqarish tartibi `play/` papkasida:
+- `play/01-dokon-matnlari.md`, `play/02-app-content.md`, `play/03-chiqarish-tartibi.md`, `play/assets/` (ikona va banner).
+- Eng muhim ochiq masala: ovoz modeli litsenziyasi va yangi akkaunt uchun 12 tester × 14 kun yopiq test.

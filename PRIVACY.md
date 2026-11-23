@@ -1,22 +1,23 @@
 # DublajUz — Maxfiylik siyosati (Privacy Policy)
 
-**Oxirgi yangilanish:** 2026-10-25
+**Oxirgi yangilanish:** 2026-11-22
 **Ilova:** DublajUz (`uz.dublaj`)
-**Aloqa:** `shoirjon0123@gmail.com`  •  https://github.com/mamazokirov1/DublajUz-new/issues
+**Aloqa:** `shoirjon0123@gmail.com`
 
 DublajUz — videodagi nutqni matnga aylantirib, o'zbek tiliga tarjima qiladigan va o'zbekcha ovoz bilan dublyaj qiladigan ilova. Ilovada hisob (akkaunt) ochilmaydi va biz sizning ma'lumotlaringizni o'z serverimizda saqlamaymiz — bizning serverimiz yo'q.
 
 ## 1. Telefoningizda qoladigan ma'lumotlar
 
 - **Video va audio fayllar** telefonda qayta ishlanadi (matnga aylantirish, ovoz sintezi, birlashtirish). Ular hech qayerga yuklanmaydi.
-- **Natijalar, tarix, sozlamalar, xato jurnallari** faqat ilovaning ichki xotirasida turadi. Xato hisobotini siz o'zingiz "ulashsangizgina" boshqa joyga ketadi.
+- **Mikrofon (ixtiyoriy).** Ilova mikrofondan faqat siz «O'zim» ovozimni yozish tugmasini bossangiz foydalanadi (ovozni o'zingiz yozib berish uchun). Yozuv telefonda saqlanadi, hech qayerga yuborilmaydi va fonda yozilmaydi. Ruxsatni istalgan vaqt tizim sozlamalaridan o'chirishingiz mumkin.
+- **Natijalar, tarix, tahrirlash loyihalari, sozlamalar, xato jurnallari** faqat ilovaning ichki xotirasida turadi. Xato hisobotini siz o'zingiz "ulashsangizgina" boshqa joyga ketadi.
 - **AI provayder API kalitlari** (Gemini, OpenAI, Anthropic va boshqalar — qaysini kiritsangiz) faqat telefonda saqlanadi.
 
 ## 2. Uchinchi tomonlarga yuboriladigan ma'lumotlar
 
 | Ma'lumot | Kimga | Nima uchun |
 |---|---|---|
-| Videodan olingan **matn** (transkripsiya), siz yozgan "video mavzusi", lug'at va tarjima sozlamalari | Siz tanlagan AI provayder: Google Gemini, OpenAI, Anthropic, DeepSeek, Groq, OpenRouter, Mistral yoki o'zingiz kiritgan OpenAI-mos xizmat (sizning o'z API kalitingiz bilan) | Tarjima qilish. Videoning o'zi yoki ovozi yuborilmaydi. Har bir provayderning o'z maxfiylik siyosati amal qiladi (masalan, https://policies.google.com/privacy, https://openai.com/policies/privacy-policy, https://www.anthropic.com/privacy) |
+| Videodan olingan **matn** (transkripsiya) va tarjima qilingan matn (Gemini ovozi tanlansa — ovozlash uchun), siz yozgan "video mavzusi", lug'at va tarjima sozlamalari | Siz tanlagan AI provayder: Google Gemini, OpenAI, Anthropic, DeepSeek, Groq, OpenRouter, Mistral yoki o'zingiz kiritgan OpenAI-mos xizmat (sizning o'z API kalitingiz bilan) | Tarjima qilish va (Gemini ovozi tanlansa) matnni ovozga aylantirish. Videoning o'zi, original ovoz va mikrofon yozuvi yuborilmaydi. Har bir provayderning o'z maxfiylik siyosati amal qiladi (masalan, https://policies.google.com/privacy, https://openai.com/policies/privacy-policy, https://www.anthropic.com/privacy) |
 | Reklama identifikatori (Advertising ID), taxminiy joylashuv (IP asosida), qurilma va reklama bilan o'zaro aloqa ma'lumotlari | Google AdMob | Faqat bepul (Free) versiyada reklama ko'rsatish. Hududingizga qarab avval rozilik so'raladi (Google UMP) |
 | Xarid holati | Google Play Billing | Pro versiyani ochish. To'lov ma'lumotlarini biz ko'rmaymiz |
 | IP manzil va yuklab olingan fayl nomi | Hugging Face (`huggingface.co`) va GitHub (`github.com`) | Nutq (Whisper) va o'zbekcha ovoz modellarini yuklab olish |
@@ -25,13 +26,17 @@ Biz ma'lumotlaringizni sotmaymiz.
 
 ## 3. Reklama va rozilik
 
-Bepul versiyada banner va to'liq ekranli reklamalar ko'rsatiladi. Yevropa Iqtisodiy Hududi, Buyuk Britaniya va boshqa ba'zi hududlarda reklamadan oldin rozilik oynasi chiqadi; roziligingizni keyin Sozlamalar → "Reklama maxfiyligi sozlamalari" orqali o'zgartirishingiz mumkin. Pro versiyada reklama ko'rsatilmaydi.
+Bepul versiyada banner, to'liq ekranli va ilova ochilganda chiqadigan (App Open) reklamalar ko'rsatiladi; reklamani ko'rib bonus olish (rewarded) ham mumkin. Yevropa Iqtisodiy Hududi, Buyuk Britaniya va boshqa ba'zi hududlarda reklamadan oldin rozilik oynasi chiqadi; roziligingizni keyin Sozlamalar → "Reklama maxfiyligi sozlamalari" orqali o'zgartirishingiz mumkin. Pro versiyada reklama ko'rsatilmaydi.
 
 ## 4. Saqlash muddati va o'chirish
 
 - Telefondagi ma'lumotlar ilovani o'chirib tashlaganingizda yoki Sozlamalardagi "tozalash" orqali o'chadi.
 - AI kalitlarini Sozlamalardan istalgan vaqtda o'chirishingiz mumkin.
 - Provayderlar (Gemini, OpenAI, Anthropic va boshqalar), AdMob va Google Play saqlaydigan ma'lumotlar uning o'z siyosatiga bo'ysunadi; ularni Google hisobingiz sozlamalaridan boshqarasiz.
+
+## 4a. Hisob yo'q — o'chirish so'rovi
+
+Ilovada hisob ochilmaydi va bizda sizning shaxsiy ma'lumotingiz saqlanmaydi, shuning uchun o'chirish so'rovi kerak emas: hamma narsa ilovani o'chirganingizda yoki Sozlamalardagi tozalash tugmalari orqali telefondan yo'qoladi.
 
 ## 5. Bolalar
 
@@ -41,6 +46,10 @@ Ilova 13 yoshdan katta foydalanuvchilar uchun. Bolalardan ongli ravishda ma'lumo
 
 Siz faqat o'zingizga tegishli yoki qayta ishlashga ruxsat berilgan videolarni dublyaj qilishingiz kerak. Boshqa kishining ovozini uning roziligisiz taqlid qilish yoki aldash maqsadida ishlatish taqiqlanadi.
 
+## 6a. AI tomonidan yaratilgan kontent
+
+Tarjima va ovoz sun'iy intellekt yordamida yaratiladi va xato yoki nomaqbul bo'lishi mumkin. Sozlamalar → «Nomaqbul kontent haqida xabar berish» orqali xabar bera olasiz; xabarlar tarjima va ovoz sifatini yaxshilash uchun ko'rib chiqiladi.
+
 ## 7. O'zgarishlar va aloqa
 
-Siyosat o'zgarsa, shu sahifada sana yangilanadi. Savollar uchun yuqoridagi email yoki GitHub Issues orqali murojaat qiling.
+Siyosat o'zgarsa, shu sahifada sana yangilanadi. Savollar uchun yuqoridagi email orqali murojaat qiling.

@@ -1294,6 +1294,46 @@ fun SettingsScreen(
                     },
                     shape = MaterialTheme.shapes.medium
                 ) { Text("Maxfiylik siyosati") }
+                var showRep by remember { mutableStateOf(false) }
+                var repWhy by remember { mutableStateOf("Haqoratli yoki zo'ravonlik") }
+                var repNote by remember { mutableStateOf("") }
+                OutlinedButton(onClick = { showRep = true }, shape = MaterialTheme.shapes.medium) {
+                    Text("Nomaqbul kontent haqida xabar berish")
+                }
+                if (showRep) {
+                    AlertDialog(
+                        onDismissRequest = { showRep = false },
+                        title = { Text("Nomaqbul kontent haqida xabar") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "AI tarjima yoki ovoz haqoratli, zo'ravon yoki aldamchi bo'lib chiqqan bo'lsa, sababini tanlab yuboring. Video va matn yuborilmaydi.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf("Haqoratli yoki zo'ravonlik", "Aldamchi / soxta", "Boshqa birovning ovozi", "Boshqa").forEach { r ->
+                                        FilterChip(selected = repWhy == r, onClick = { repWhy = r }, label = { Text(r) })
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = repNote,
+                                    onValueChange = { repNote = it },
+                                    label = { Text("Izoh (ixtiyoriy)") },
+                                    minLines = 2,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showRep = false
+                                BugReport.reportContent(context, repWhy, repNote)
+                                repNote = ""
+                            }) { Text("Yuborish") }
+                        },
+                        dismissButton = { TextButton(onClick = { showRep = false }) { Text("Bekor qilish") } }
+                    )
+                }
                 val actCtx = context as? Activity
                 if (actCtx != null && uz.dublaj.monetization.ConsentManager.privacyOptionsRequired(context)) {
                     OutlinedButton(

@@ -60,6 +60,24 @@ object BugReport {
         return out
     }
 
+    /** Nomaqbul AI kontent (tarjima/ovoz) haqida xabar: faqat sabab va izoh, video/matn kirmaydi. */
+    fun reportContent(context: Context, reason: String, note: String) {
+        val body = "Sabab: $reason\n\n${note.trim()}\n\nVersiya: " +
+            (try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (_: Exception) { "?" })
+        val i = Intent(Intent.ACTION_SENDTO).apply {
+            data = android.net.Uri.parse("mailto:")
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(ADMIN_EMAIL))
+            putExtra(Intent.EXTRA_SUBJECT, "DublajUz: nomaqbul kontent haqida xabar")
+            putExtra(Intent.EXTRA_TEXT, body)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(i)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Email ilovasi topilmadi. Xabarni $ADMIN_EMAIL manziliga yuboring.", Toast.LENGTH_LONG).show()
+        }
+    }
+
     /** Hisobotni faqat ilova adminiga (Gmail) yuborish oynasini ochadi. */
     fun share(context: Context, file: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
