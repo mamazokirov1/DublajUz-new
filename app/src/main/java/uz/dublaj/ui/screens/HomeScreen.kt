@@ -339,8 +339,11 @@ fun HomeScreen(
                         )
                     }
                     // Asl ovoz balandligi (tez sozlash)
-                    Card(shape = MaterialTheme.shapes.medium) {
-                        Column(Modifier.padding(12.dp)) {
+                    Card(
+                        shape = MaterialTheme.shapes.large,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f))
+                    ) {
+                        Column(Modifier.padding(14.dp)) {
                             Text(
                                 "Asl video ovozi: ${(config.originalVolume * 100).toInt()}%",
                                 style = MaterialTheme.typography.labelLarge

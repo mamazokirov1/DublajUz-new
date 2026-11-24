@@ -71,6 +71,8 @@ fun EditTranslationScreen(
     var onlyNoVoice by remember { mutableStateOf(false) }
     var seekMs by remember { mutableStateOf<Long?>(null) }
     var seekTick by remember { mutableIntStateOf(0) }
+    var curMs by remember { mutableLongStateOf(-1L) }
+    DisposableEffect(Unit) { onDispose { uz.dublaj.ui.components.PlayerMemory.clear() } }
     // Klaviatura ochilganda video/filtrlar yig'ishtiriladi — matn maydoni uchun joy qoladi
     val imeVisible = WindowInsets.isImeVisible
     var seqMode by remember { mutableStateOf(false) }
@@ -158,6 +160,19 @@ fun EditTranslationScreen(
                 onlyNoVoice -> !u.hasUserVoice
                 else -> true
             }
+        }
+    }
+
+    val activeId = remember(curMs, units) {
+        if (curMs < 0) null
+        else units.lastOrNull { it.start * 1000 <= curMs }?.takeIf { curMs <= it.end * 1000 + 800 }?.id
+    }
+    LaunchedEffect(activeId) {
+        val id = activeId ?: return@LaunchedEffect
+        if (listState.isScrollInProgress || imeVisible) return@LaunchedEffect
+        val pos = filtered.indexOfFirst { it.second.id == id }
+        if (pos >= 0 && (pos < listState.firstVisibleItemIndex || pos > listState.firstVisibleItemIndex + 1)) {
+            listState.animateScrollToItem(pos)
         }
     }
 
@@ -397,6 +412,7 @@ fun EditTranslationScreen(
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
                             seekMs = seekMs,
                             seekToken = seekTick,
+                            onPosition = { curMs = it },
                             maxVideoHeight = (screenHeightDp * 0.2f).coerceIn(100f, 170f).dp
                         )
                     }
@@ -446,6 +462,7 @@ fun EditTranslationScreen(
                         previewing = previewUnit == unit.id,
                         preparing = previewUnit == unit.id && previewPhase?.startsWith("Ovoz tayyor") == true,
                         highlightSeq = seqMode && index == seqIndex,
+                        active = unit.id == activeId,
                         onSeek = { seekMs = (unit.start * 1000).toLong(); seekTick++ },
                         onRecorded = {
                             if (seqMode) {
@@ -493,7 +510,8 @@ private fun UnitCard(
     highlightSeq: Boolean,
     onSeek: () -> Unit,
     onRecorded: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    active: Boolean = false
 ) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
@@ -574,6 +592,7 @@ private fun UnitCard(
     Card(
         modifier = modifier.animateContentSize(),
         shape = MaterialTheme.shapes.large,
+        border = if (active) androidx.compose.foundation.BorderStroke(2.dp, cs.primary) else null,
         colors = CardDefaults.cardColors(containerColor = cardColor)
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

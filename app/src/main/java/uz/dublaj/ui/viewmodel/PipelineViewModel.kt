@@ -104,7 +104,7 @@ class PipelineViewModel : ViewModel() {
 
     private val _playerUri = MutableStateFlow<Uri?>(null)
     val playerUri: StateFlow<Uri?> = _playerUri.asStateFlow()
-    fun openPlayer(uri: Uri) { _playerUri.value = uri }
+    fun openPlayer(uri: Uri) { uz.dublaj.ui.components.PlayerMemory.clear(); _playerUri.value = uri }
 
     private val _audioResult = MutableStateFlow<File?>(null)
     /** Oxirgi "matn → ovoz" natijasi (WAV). */
@@ -143,6 +143,28 @@ class PipelineViewModel : ViewModel() {
             _timedOriginal.value = withContext(Dispatchers.IO) { pipeline.timedTranscript(app) }
             _state.value = PipelineState.Idle
             toast("Matn tayyor ✓")
+        }
+    }
+
+    /** Ajratilgan matn: boshqa AI da tarjima qilish uchun JSON (IO oqimida chaqiring). */
+    fun transcriptJson(context: Context): String = pipeline.exportTranscriptJson(context.applicationContext)
+
+    /** Tashqarida tarjima qilingan JSON ni import qiladi; keyin tahrir ekranida ko'rib chiqiladi. */
+    fun importTranslation(context: Context, json: String, onDone: () -> Unit = {}) {
+        val app = context.applicationContext
+        if (isBusy || _busy.value) { toast("Boshqa jarayon ketyapti — biroz kuting"); return }
+        viewModelScope.launch {
+            try {
+                val list = withContext(Dispatchers.IO) { pipeline.importTranslationJson(app, _config.value, json) }
+                undoStack.clear()
+                _translationUnits.value = list
+                _approved.value = false
+                val bad = list.count { it.check }
+                toast("${list.size - bad} ta gap import qilindi" + if (bad > 0) ", $bad ta tekshirilsin ⚠" else " ✓")
+                onDone()
+            } catch (e: Exception) {
+                toast(e.message ?: "Import xatosi")
+            }
         }
     }
 

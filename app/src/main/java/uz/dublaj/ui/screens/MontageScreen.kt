@@ -217,6 +217,15 @@ private fun MontageEditor(p: MontageProject, vm: PipelineViewModel, onBack: () -
         }
     }
 
+    val lifeOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifeOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) playing = false
+        }
+        lifeOwner.lifecycle.addObserver(obs)
+        onDispose { lifeOwner.lifecycle.removeObserver(obs) }
+    }
+
     // Ijro: ovoz videoga ergashadi; og'ish 70 ms dan oshsa tuzatiladi
     LaunchedEffect(playing) {
         if (playing) {

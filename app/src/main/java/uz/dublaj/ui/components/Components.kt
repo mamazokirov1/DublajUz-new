@@ -79,11 +79,7 @@ fun GradientHero(
             .fillMaxWidth()
             .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
             .background(
-                Brush.linearGradient(
-                    if (uz.dublaj.ui.theme.ThemeSettings.pro && uz.dublaj.ui.theme.ThemeSettings.accent != 0)
-                        listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.75f), MaterialTheme.colorScheme.secondary)
-                    else listOf(Brand.Indigo, Brand.Violet, Brand.Teal)
-                )
+                Brush.linearGradient(uz.dublaj.ui.theme.currentGradient())
             )
     ) {
         val wave = androidx.compose.animation.core.rememberInfiniteTransition(label = "heroWave")
@@ -256,10 +252,13 @@ fun SectionCard(
                 Modifier.fillMaxWidth().clickable { expanded = !expanded },
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val k = (title.hashCode() and 0x7fffffff) % 3
+                val bg = when (k) { 0 -> cs.primaryContainer; 1 -> cs.secondaryContainer; else -> cs.tertiaryContainer }
+                val fg = when (k) { 0 -> cs.onPrimaryContainer; 1 -> cs.onSecondaryContainer; else -> cs.onTertiaryContainer }
                 Box(
-                    Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(cs.primaryContainer),
+                    Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(bg),
                     contentAlignment = Alignment.Center
-                ) { Icon(icon, null, tint = cs.onPrimaryContainer, modifier = Modifier.size(22.dp)) }
+                ) { Icon(icon, null, tint = fg, modifier = Modifier.size(22.dp)) }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)

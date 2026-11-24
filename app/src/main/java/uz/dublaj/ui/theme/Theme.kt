@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -37,17 +39,72 @@ object ThemeSettings {
     var pro by mutableStateOf(false)
 }
 
-/** Pro rang mavzulari: nomi, yorug' primary, yorug' container, qorong'i primary, qorong'i container. */
-data class AccentPalette(val name: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color)
+/**
+ * Rang mavzusi. Birinchi 5 maydon — asosiy (primary) ranglar; qolganlari butun sxemani (ikkilamchi rang,
+ * fon, sirt, gradient) uyg'unlashtiradi. 0-mavzu — standart (hammaga bepul), qolganlari — Pro.
+ */
+data class AccentPalette(
+    val name: String,
+    val light: Color,
+    val lightContainer: Color,
+    val dark: Color,
+    val darkContainer: Color,
+    val sec: Color = Color(0xFF00898A),
+    val bgLight: Color = Color(0xFFF7F5FF),
+    val bgDark: Color = Color(0xFF110F18),
+    val surfDark: Color = Color(0xFF1B1824),
+    val gradient: List<Color> = listOf(Color(0xFF4A2FD0), Color(0xFF7B4DFF), Color(0xFF00A6A6))
+)
 
 val AccentPalettes: List<AccentPalette> = listOf(
     AccentPalette("Binafsha (standart)", Color(0xFF5B3FD8), Color(0xFFE6DFFF), Color(0xFFB9AAFF), Color(0xFF4328B8)),
-    AccentPalette("Okean", Color(0xFF0B63D6), Color(0xFFD6E6FF), Color(0xFF9CC4FF), Color(0xFF0A3F8C)),
-    AccentPalette("Zumrad", Color(0xFF0B8A5D), Color(0xFFCFF5E4), Color(0xFF6FE0B0), Color(0xFF06583B)),
-    AccentPalette("Quyosh botishi", Color(0xFFD9480F), Color(0xFFFFE0CC), Color(0xFFFFB38A), Color(0xFF8A2E06)),
-    AccentPalette("Atirgul", Color(0xFFC2255C), Color(0xFFFFDDE8), Color(0xFFFFA8C5), Color(0xFF7D1238)),
-    AccentPalette("Oltin", Color(0xFF9A6B00), Color(0xFFFFEFC2), Color(0xFFFFD566), Color(0xFF5E4100))
+    AccentPalette(
+        "Okean", Color(0xFF0B63D6), Color(0xFFD6E6FF), Color(0xFF9CC4FF), Color(0xFF0A3F8C),
+        sec = Color(0xFF0097A7), bgLight = Color(0xFFF2F7FF), bgDark = Color(0xFF09111B), surfDark = Color(0xFF111C2A),
+        gradient = listOf(Color(0xFF0A3F8C), Color(0xFF0B63D6), Color(0xFF14B8C6))
+    ),
+    AccentPalette(
+        "Zumrad", Color(0xFF0B8A5D), Color(0xFFCFF5E4), Color(0xFF6FE0B0), Color(0xFF06583B),
+        sec = Color(0xFFB7892B), bgLight = Color(0xFFF1FAF5), bgDark = Color(0xFF09130F), surfDark = Color(0xFF111F19),
+        gradient = listOf(Color(0xFF06583B), Color(0xFF0B8A5D), Color(0xFF3FD0A4))
+    ),
+    AccentPalette(
+        "Quyosh botishi", Color(0xFFD9480F), Color(0xFFFFE0CC), Color(0xFFFFB38A), Color(0xFF8A2E06),
+        sec = Color(0xFFC2255C), bgLight = Color(0xFFFFF6F0), bgDark = Color(0xFF17100C), surfDark = Color(0xFF221813),
+        gradient = listOf(Color(0xFFB0235A), Color(0xFFD9480F), Color(0xFFF5A524))
+    ),
+    AccentPalette(
+        "Atirgul", Color(0xFFC2255C), Color(0xFFFFDDE8), Color(0xFFFFA8C5), Color(0xFF7D1238),
+        sec = Color(0xFFB8860B), bgLight = Color(0xFFFFF5F8), bgDark = Color(0xFF160D11), surfDark = Color(0xFF211419),
+        gradient = listOf(Color(0xFF7D1238), Color(0xFFC2255C), Color(0xFFE8A87C))
+    ),
+    AccentPalette(
+        "Oltin tun", Color(0xFF8A6100), Color(0xFFFFEFC2), Color(0xFFF2C14E), Color(0xFF5E4100),
+        sec = Color(0xFF6B7A99), bgLight = Color(0xFFFBF8EF), bgDark = Color(0xFF0B0B0E), surfDark = Color(0xFF16161B),
+        gradient = listOf(Color(0xFF1C1608), Color(0xFF7A5400), Color(0xFFF2C14E))
+    ),
+    AccentPalette(
+        "Aurora", Color(0xFF6D28D9), Color(0xFFEDE4FF), Color(0xFFC4B5FD), Color(0xFF4C1D95),
+        sec = Color(0xFF0D9488), bgLight = Color(0xFFF8F4FF), bgDark = Color(0xFF0E0A18), surfDark = Color(0xFF18132A),
+        gradient = listOf(Color(0xFF4C1D95), Color(0xFF7C3AED), Color(0xFF14B8A6))
+    ),
+    AccentPalette(
+        "Yarim tun", Color(0xFF1E40AF), Color(0xFFDCE6FF), Color(0xFF93B4FF), Color(0xFF1B2D6B),
+        sec = Color(0xFF0EA5E9), bgLight = Color(0xFFF3F6FF), bgDark = Color(0xFF070B16), surfDark = Color(0xFF0F1628),
+        gradient = listOf(Color(0xFF0B1437), Color(0xFF1E40AF), Color(0xFF38BDF8))
+    ),
+    AccentPalette(
+        "Yoqut", Color(0xFFB3122B), Color(0xFFFFDAD9), Color(0xFFFF8A94), Color(0xFF7A0A1E),
+        sec = Color(0xFF5F6B7A), bgLight = Color(0xFFFFF5F5), bgDark = Color(0xFF0E0D0F), surfDark = Color(0xFF19171A),
+        gradient = listOf(Color(0xFF3A0A14), Color(0xFFB3122B), Color(0xFFFF6B6B))
+    )
 )
+
+/** Hozirgi (Pro tanlovi hisobga olingan) mavzuning gradienti: hero, jarayon kartasi va h.k. uchun. */
+fun currentGradient(): List<Color> =
+    AccentPalettes[if (ThemeSettings.pro) ThemeSettings.accent.coerceIn(0, AccentPalettes.size - 1) else 0].gradient
+
+private fun onColor(c: Color): Color = if (c.luminance() > 0.5f) Color(0xFF14121A) else Color.White
 
 object Brand {
     val Indigo = Color(0xFF4A2FD0)
@@ -140,14 +197,33 @@ fun DublajTheme(content: @Composable () -> Unit) {
     val scheme = when {
         ThemeSettings.dynamic && Build.VERSION.SDK_INT >= 31 ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        dark -> if (accentIdx == 0) DarkColors else DarkColors.copy(
-            primary = pal.dark, primaryContainer = pal.darkContainer,
-            onPrimary = Color(0xFF101010), onPrimaryContainer = Color.White
-        )
-        else -> if (accentIdx == 0) LightColors else LightColors.copy(
-            primary = pal.light, primaryContainer = pal.lightContainer,
-            onPrimary = Color.White, onPrimaryContainer = Color(0xFF101010)
-        )
+        accentIdx == 0 -> if (dark) DarkColors else LightColors
+        dark -> {
+            val sc = lerp(pal.sec, Color.Black, 0.55f)
+            DarkColors.copy(
+                primary = pal.dark, onPrimary = onColor(pal.dark),
+                primaryContainer = pal.darkContainer, onPrimaryContainer = onColor(pal.darkContainer),
+                secondary = lerp(pal.sec, Color.White, 0.35f), onSecondary = Color(0xFF101010),
+                secondaryContainer = sc, onSecondaryContainer = onColor(sc),
+                tertiary = pal.gradient.last(), tertiaryContainer = lerp(pal.gradient.last(), Color.Black, 0.6f),
+                onTertiaryContainer = Color.White,
+                background = pal.bgDark, surface = pal.surfDark,
+                surfaceVariant = lerp(pal.surfDark, Color.White, 0.08f)
+            )
+        }
+        else -> {
+            val sc = lerp(pal.sec, Color.White, 0.82f)
+            LightColors.copy(
+                primary = pal.light, onPrimary = onColor(pal.light),
+                primaryContainer = pal.lightContainer, onPrimaryContainer = onColor(pal.lightContainer),
+                secondary = pal.sec, onSecondary = Color.White,
+                secondaryContainer = sc, onSecondaryContainer = Color(0xFF14121A),
+                tertiary = pal.gradient.last(), tertiaryContainer = lerp(pal.gradient.last(), Color.White, 0.8f),
+                onTertiaryContainer = Color(0xFF14121A),
+                background = pal.bgLight, surface = lerp(pal.bgLight, Color.White, 0.7f),
+                surfaceVariant = lerp(pal.bgLight, pal.light, 0.1f)
+            )
+        }
     }
     val view = LocalView.current
     if (!view.isInEditMode) {

@@ -44,6 +44,20 @@ import java.io.File
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
+/**
+ * Pleyer yo'q qilinib qayta yaratilganda (klaviatura ochilishi, ekran aylanishi, orqaga qaytish)
+ * joy va oxirgi bajarilgan "vaqtga o'tish" so'rovi yo'qolmasin.
+ */
+object PlayerMemory {
+    private val pos = HashMap<String, Long>()
+    private val seeks = HashMap<String, Pair<Long, Int>>()
+    @Synchronized fun savePos(key: String, ms: Long) { pos[key] = ms }
+    @Synchronized fun pos(key: String): Long = pos[key] ?: 0L
+    @Synchronized fun applied(key: String, seek: Pair<Long, Int>): Boolean = seeks[key] == seek
+    @Synchronized fun markApplied(key: String, seek: Pair<Long, Int>) { seeks[key] = seek }
+    @Synchronized fun clear() { pos.clear(); seeks.clear() }
+}
+
 /** Subtitr bo'lagi: [startSec], [endSec] oralig'ida [text]. */
 data class SubCue(val startSec: Double, val endSec: Double, val text: String)
 
@@ -64,9 +78,11 @@ fun VideoPlayer(
     /** Bir xil vaqtga qayta o'tish uchun: har bosishda oshiriladi. */
     seekToken: Int = 0,
     /** Video oynasining eng katta balandligi (tik videolar ekranni to'ldirib yubormasligi uchun). */
-    maxVideoHeight: Dp = Dp.Unspecified
+    maxVideoHeight: Dp = Dp.Unspecified,
+    /** Joriy ijro vaqti (ms), ijro paytida har ~100 ms da. */
+    onPosition: ((Long) -> Unit)? = null
 ) {
-    key(uri) { PlayerBody(uri, modifier, autoPlay, seekMs, subtitle, cues, seekToken, maxVideoHeight) }
+    key(uri) { PlayerBody(uri, modifier, autoPlay, seekMs, subtitle, cues, seekToken, maxVideoHeight, onPosition) }
 }
 
 /** Ilova ichida ochilmasa — tizimdagi boshqa video ilovada ochish. */
@@ -94,15 +110,18 @@ private fun PlayerBody(
     subtitle: String?,
     cues: List<SubCue>,
     seekToken: Int,
-    maxVideoHeight: Dp
+    maxVideoHeight: Dp,
+    onPosition: ((Long) -> Unit)?
 ) {
     val cs = MaterialTheme.colorScheme
+    val memKey = uri.toString()
+    val onPos by rememberUpdatedState(onPosition)
     val ctx = LocalContext.current
     val screenHeightDp = LocalConfiguration.current.screenHeightDp
     // Dekoder ochilmasa dasturiy dekoderga o'tadi (ba'zi kodeklar VideoView'da ochilmasdi)
     val player = remember(uri) {
         ExoPlayer.Builder(ctx, DefaultRenderersFactory(ctx).setEnableDecoderFallback(true)).build().apply {
-            setMediaItem(MediaItem.fromUri(uri))
+            setMediaItem(MediaItem.fromUri(uri), PlayerMemory.pos(memKey))
             playWhenReady = false
             prepare()
         }
@@ -111,7 +130,7 @@ private fun PlayerBody(
     var startedOnce by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
     var duration by remember { mutableIntStateOf(0) }
-    var pos by remember { mutableIntStateOf(0) }
+    var pos by remember { mutableIntStateOf(PlayerMemory.pos(memKey).toInt()) }
     var dragging by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var aspect by remember { mutableFloatStateOf(16f / 9f) }
@@ -141,6 +160,10 @@ private fun PlayerBody(
                 }
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (playing != playWhenReady) playing = playWhenReady
+            }
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
                     aspect = (videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height).coerceIn(0.5f, 2.4f)
@@ -154,6 +177,9 @@ private fun PlayerBody(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            try {
+                if (player.playbackState != Player.STATE_ENDED) PlayerMemory.savePos(memKey, player.currentPosition)
+            } catch (_: Exception) { }
             try { player.release() } catch (_: Exception) { }
         }
     }
@@ -164,9 +190,15 @@ private fun PlayerBody(
     LaunchedEffect(ready, seekMs, seekToken) {
         val ms = seekMs ?: return@LaunchedEffect
         if (!ready) return@LaunchedEffect
+        val req = ms to seekToken
+        if (PlayerMemory.applied(memKey, req)) return@LaunchedEffect
+        PlayerMemory.markApplied(memKey, req)
         try {
-            player.seekTo(ms.coerceAtLeast(0L))
-            pos = ms.toInt()
+            val dur = player.duration
+            val target = if (dur > 0) ms.coerceIn(0L, dur - 1) else ms.coerceAtLeast(0L)
+            player.seekTo(target)
+            pos = target.toInt()
+            onPos?.invoke(target)
             playing = true
         } catch (_: Exception) {
         }
@@ -174,9 +206,13 @@ private fun PlayerBody(
     LaunchedEffect(ready) {
         while (ready) {
             if (!dragging) {
-                try { pos = player.currentPosition.toInt() } catch (_: Exception) { }
+                try {
+                    val c = player.currentPosition
+                    pos = c.toInt()
+                    if (player.isPlaying) onPos?.invoke(c)
+                } catch (_: Exception) { }
             }
-            delay(120)
+            delay(if (playing) 80 else 200)
         }
     }
     // Ilova fonga o'tganda (ekran o'chganda, boshqa ilovaga o'tilganda) video ovozi to'xtasin
@@ -292,8 +328,9 @@ private fun PlayerBody(
                     pos = it.toInt()
                 },
                 onValueChangeFinished = {
-                    dragging = false
                     try { player.seekTo(pos.toLong()) } catch (_: Exception) {}
+                    onPos?.invoke(pos.toLong())
+                    dragging = false
                 },
                 modifier = Modifier.weight(1f),
                 enabled = ready

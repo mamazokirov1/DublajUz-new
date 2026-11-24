@@ -143,3 +143,9 @@ Dependency: `billing-ktx:7.1.1` yoqilgan.
 - «Faqat matn» rejimi: videodan matn vaqt belgilari bilan va yaxlit ko'rinishda (nusxa, TXT, SRT); AI kalitisiz.
 - Tarjima: ⋮ menyusida «Xatolarni qayta tarjima» (faqat ⚠ gaplar) va «Hammasini qayta tarjima».
 - Dizayn: bosh ekranda ixcham tugmalar qatori, animatsiyali kartalar va hero, ro'yxatlarda silliq joy almashish, ovoz sozlamalari tahrirda yig'iladigan blokda.
+
+## v35 yangiliklari
+- Videoplayer: klaviatura ochilganda boshiga qaytish va noto'g'ri vaqtga o'tish xatosi tuzatildi; tahrirda ijro paytida mos gap ajralib turadi va ro'yxat o'zi siljiydi; Montajda ilova fonga o'tsa ijro to'xtaydi.
+- Matnni JSON qilib saqlash/nusxalash (boshqa AI uchun ko'rsatma bilan) va tarjima qilingan JSON ni fayl yoki bufer orqali import qilish.
+- Jarayon kartasida (dublyaj/matn ajratish paytida) reklama bloki; tarixda har 4-elementdan keyin banner; matn/ovoz tugagach yumshoq interstitial (90 s oralig'i).
+- Yangi rang mavzulari (Pro): Okean, Zumrad, Quyosh botishi, Atirgul, Oltin tun, Aurora, Yarim tun, Yoqut: fon, sirt va gradient ham mavzuga moslanadi.

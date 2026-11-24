@@ -53,7 +53,7 @@ fun RunningBanner(s: PipelineState.Running, cancelling: Boolean, onCancel: () ->
             .background(
                 Brush.linearGradient(
                     if (cancelling) listOf(Color(0xFF6B6B6B), Color(0xFF8A6A4A))
-                    else listOf(Color(0xFF4A2FD0), Color(0xFF7B4DFF), Color(0xFF00A6A6))
+                    else uz.dublaj.ui.theme.currentGradient()
                 )
             )
             .animateContentSize()
@@ -98,6 +98,22 @@ fun RunningBanner(s: PipelineState.Running, cancelling: Boolean, onCancel: () ->
                     "Ilovani yopmang, u fonda ishlayveradi (bildirishnoma ko'rinadi).",
                     color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall
                 )
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                if (uz.dublaj.monetization.AdsManager.shouldShowAds(ctx) && uz.dublaj.monetization.AdsManager.adsReady) {
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = Color.White.copy(alpha = 0.14f),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 16.dp)
+                    ) {
+                        Column(
+                            Modifier.padding(8.dp).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Reklama", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelSmall)
+                            uz.dublaj.monetization.BannerAd(rect = true)
+                        }
+                    }
+                }
             }
             TextButton(onClick = onCancel, enabled = !cancelling) {
                 Text(if (cancelling) "Bekor qilinmoqda…" else "Bekor qilish", color = Color.White.copy(alpha = if (cancelling) 0.6f else 1f))

@@ -208,7 +208,7 @@ fun DublajNavHost(incomingUri: Uri? = null, onIncomingConsumed: () -> Unit = {},
             )
         }
         composable(Routes.TEXT) {
-            TextToolsScreen(vm = vm, onBack = { navController.popBackStack() })
+            TextToolsScreen(vm = vm, onBack = { navController.popBackStack() }, onEdit = { navController.navigate(Routes.EDIT) })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(vm = vm, onBack = { navController.popBackStack() })

@@ -312,6 +312,17 @@ object AdsManager {
         }
     }
 
+    private var lastSoftAt = 0L
+
+    /** Ish tugagach (matn, ovoz) yumshoq interstitial: ikki reklama orasida kamida 90 s. */
+    fun showInterstitialSoft(activity: Activity) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSoftAt < 90_000L || now - lastFsEnd < FS_GAP) return
+        if (!shouldShowAds(activity) || !adsReady || interstitial == null) return
+        lastSoftAt = now
+        showInterstitialAfterDub(activity)
+    }
+
     /**
      * Dublyaj muvaffaqiyatli tugagach chaqiring.
      * Pro da yoki reklama yuklanmagan bo'lsa — darhol onDismissed.

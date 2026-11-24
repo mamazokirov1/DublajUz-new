@@ -1230,6 +1230,81 @@ class DubbingPipeline {
         }
     }
 
+    /** Ajratilgan matnni boshqa AI/ilovada tarjima qilish uchun JSON qilib beradi (har gapda bo'sh "uz" maydoni). */
+    fun exportTranscriptJson(context: Context): String {
+        val segs = JSONArray()
+        for (u in timedTranscript(context)) {
+            segs.put(JSONObject().apply {
+                put("id", u.id)
+                put("start", Math.round(u.start * 1000) / 1000.0)
+                put("end", Math.round(u.end * 1000) / 1000.0)
+                put("text", u.text.trim())
+                put("uz", "")
+            })
+        }
+        return JSONObject().apply {
+            put("format", "dublajuz-transcript")
+            put("version", 1)
+            put("source_language", timedTranscript(context).firstOrNull()?.language ?: "en")
+            put("target_language", "uz")
+            put("segments", segs)
+        }.toString(1)
+    }
+
+    /**
+     * Tashqarida tarjima qilingan JSON ni ilovaga qaytaradi. Gaplar "id" bo'yicha moslanadi
+     * (id yo'q bo'lsa va soni teng bo'lsa — tartib bo'yicha). Topilmaganlari ⚠ bilan belgilanadi.
+     */
+    fun importTranslationJson(context: Context, config: AppConfig, raw: String): List<TranslationUnit> {
+        val dir = ensure(context)
+        val src = timedTranscript(context)
+        if (src.isEmpty()) throw IllegalStateException("Avval videodan matn ajratib oling.")
+        val t = raw.trim()
+        val i0 = t.indexOfFirst { it == '{' || it == '[' }
+        val i1 = t.indexOfLast { it == '}' || it == ']' }
+        if (i0 < 0 || i1 <= i0) throw IllegalStateException("JSON topilmadi. Faylda yoki buferda JSON bo'lishi kerak.")
+        val body = t.substring(i0, i1 + 1)
+        val arr: JSONArray = try {
+            if (body.startsWith("[")) JSONArray(body) else {
+                val o = JSONObject(body)
+                o.optJSONArray("segments") ?: o.optJSONArray("items") ?: throw IllegalStateException("«segments» ro'yxati topilmadi.")
+            }
+        } catch (e: org.json.JSONException) {
+            throw IllegalStateException("JSON buzuq: ${e.message}")
+        }
+        fun uzOf(o: JSONObject): String =
+            listOf("uz", "uzbek", "translation", "text_uz", "uzText").map { o.optString(it, "") }.firstOrNull { it.isNotBlank() }?.trim() ?: ""
+        val byId = HashMap<Int, String>()
+        val byIdx = ArrayList<String>()
+        for (k in 0 until arr.length()) {
+            val o = arr.optJSONObject(k) ?: continue
+            val u = uzOf(o)
+            byIdx.add(u)
+            if (o.has("id")) byId[o.optInt("id", -1)] = u
+        }
+        val useIdx = src.none { byId.containsKey(it.id) } && byIdx.size == src.size
+        val norm = TextNormalizer.fromAssets(context.applicationContext)
+        val autoRoles: Map<Int, String> =
+            if (config.autoVoiceRole) uz.dublaj.text.VoiceRoles.assign(src, config.baseVoiceFemale) else emptyMap()
+        var found = 0
+        val result = ArrayList<TranslationUnit>()
+        for ((k, u) in src.withIndex()) {
+            val rawUz = (if (useIdx) byIdx.getOrNull(k) else byId[u.id]).orEmpty()
+            if (rawUz.isBlank()) {
+                result.add(TranslationUnit(u.id, u.start, u.end, u.text, u.text, u.language, true, emptyList(), "Importda tarjima topilmadi", autoRoles[u.id] ?: ""))
+                continue
+            }
+            found++
+            val uzT = norm.normalize(rawUz)
+            val qa = TranslationQa.issue(u.text, rawUz) ?: TranslationQa.issue(u.text, uzT)
+            result.add(TranslationUnit(u.id, u.start, u.end, u.text, uzT, u.language, qa != null, listOf(uzT), qa, autoRoles[u.id] ?: ""))
+        }
+        if (found == 0) throw IllegalStateException("Hech bir gap tarjimasi topilmadi. «uz» maydonlari to'ldirilganini tekshiring.")
+        dir.approvedFlag.delete()
+        saveTranslation(context, result)
+        return result
+    }
+
     /** Ixtiyoriy o'zbekcha matnni ovozga aylantirib, WAV fayl qiladi (video vaqtlari yo'q). */
     fun synthesizeText(
         context: Context,

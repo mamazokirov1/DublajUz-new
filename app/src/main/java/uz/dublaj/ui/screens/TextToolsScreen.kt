@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import uz.dublaj.data.PipelineState
 import uz.dublaj.data.UsageStore
 import uz.dublaj.monetization.BillingManager
@@ -46,7 +48,7 @@ import java.util.Locale
 /** "Matn va ovoz": videodan oddiy matn olish va istalgan matnni o'zbekcha ovozga aylantirish. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
+fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit, onEdit: () -> Unit = {}) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     val state by vm.state.collectAsState()
@@ -65,6 +67,16 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
     var typed by rememberSaveable { mutableStateOf("") }
 
     CollectUiEvents(vm, host)
+    LaunchedEffect(audio) {
+        if (audio != null) context.findActivity()?.let { uz.dublaj.monetization.AdsManager.showInterstitialSoft(it) }
+    }
+    var wasBusy by remember { mutableStateOf(false) }
+    LaunchedEffect(busy) {
+        if (wasBusy && !busy && timed.isNotEmpty()) {
+            context.findActivity()?.let { uz.dublaj.monetization.AdsManager.showInterstitialSoft(it) }
+        }
+        wasBusy = busy
+    }
     LaunchedEffect(hasTranscript) { if (hasTranscript) vm.refreshPlainTexts(context) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { u ->
         u?.let { vm.setVideo(it) }
@@ -177,7 +189,7 @@ fun TextToolsScreen(vm: PipelineViewModel, onBack: () -> Unit) {
                                 }
                             }
                             if (timed.isNotEmpty()) {
-                                TranscriptView(timed, original, vm)
+                                TranscriptView(timed, original, vm, onEdit)
                             }
                             if (uzText.isNotBlank()) {
                                 TextBlock(
@@ -486,8 +498,9 @@ private fun AudioCard(file: File, vm: PipelineViewModel) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TranscriptView(timed: List<uz.dublaj.data.TranscriptUnit>, plain: String, vm: PipelineViewModel) {
+private fun TranscriptView(timed: List<uz.dublaj.data.TranscriptUnit>, plain: String, vm: PipelineViewModel, onEdit: () -> Unit) {
     val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
     var mode by rememberSaveable { mutableIntStateOf(0) }
@@ -543,6 +556,7 @@ private fun TranscriptView(timed: List<uz.dublaj.data.TranscriptUnit>, plain: St
                 }
             }
         }
+        ExternalAiCard(vm, onEdit)
         if (mode == 0) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilledTonalButton(onClick = {
@@ -568,6 +582,97 @@ private fun TranscriptView(timed: List<uz.dublaj.data.TranscriptUnit>, plain: St
                     Icon(Icons.Default.Subtitles, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("SRT")
+                }
+            }
+        }
+    }
+}
+
+private const val AI_PROMPT = "Quyidagi JSON dagi «segments» ro'yxatining har bir elementidagi «text» ni o'zbek tiliga (lotin yozuvi) " +
+    "tabiiy, og'zaki nutq uslubida tarjima qiling va natijani shu elementning «uz» maydoniga yozing. " +
+    "«id», «start», «end» va «text» ni O'ZGARTIRMANG, elementlarni qo'shmang va tushirib qoldirmang. " +
+    "Raqam va qisqartmalarni so'z bilan yozing. Javobda faqat toza JSON qaytaring (izoh va ``` belgilarisiz).\n\n"
+
+@Composable
+private fun ExternalAiCard(vm: PipelineViewModel, onEdit: () -> Unit) {
+    val context = LocalContext.current
+    val cs = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    val busy by vm.busy.collectAsState()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
+        if (u != null) {
+            val txt = try {
+                context.contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText() }.orEmpty()
+            } catch (e: Exception) { "" }
+            if (txt.isBlank()) vm.toast("Fayl o'qilmadi yoki bo'sh") else vm.importTranslation(context, txt, onEdit)
+        }
+    }
+    fun clip(label: String, text: String) {
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText(label, text))
+    }
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = cs.secondaryContainer.copy(alpha = 0.55f)),
+        modifier = Modifier.fillMaxWidth().animateContentSize()
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Boshqa AI yoki ilovada tarjima", style = MaterialTheme.typography.titleMedium, color = cs.onSecondaryContainer)
+            Text(
+                "1) Matnni JSON qilib oling va istalgan AI ga bering.  2) Tarjima qilingan JSON ni shu yerga qaytaring.",
+                style = MaterialTheme.typography.bodySmall, color = cs.onSecondaryContainer
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilledTonalButton(onClick = {
+                    scope.launch {
+                        val j = withContext(kotlinx.coroutines.Dispatchers.IO) { vm.transcriptJson(context) }
+                        clip("json", AI_PROMPT + j)
+                        Toast.makeText(context, "Ko'rsatma + JSON nusxalandi. AI ga joylang ✓", Toast.LENGTH_LONG).show()
+                    }
+                }) {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("AI uchun nusxalash")
+                }
+                FilledTonalButton(onClick = {
+                    scope.launch {
+                        try {
+                            val j = withContext(kotlinx.coroutines.Dispatchers.IO) { vm.transcriptJson(context) }
+                            val dir = WorkDir(context.applicationContext).output.apply { mkdirs() }
+                            val f = File(dir, "matn_${System.currentTimeMillis()}.json")
+                            f.writeText(j)
+                            uz.dublaj.util.safeStart(context, ExportUtils.shareIntent(context, f, "application/json", "JSON ni saqlash/ulashish"))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Fayl yozilmadi: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }) {
+                    Icon(Icons.Default.DataObject, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("JSON fayl")
+                }
+            }
+            HorizontalDivider(color = cs.onSecondaryContainer.copy(alpha = 0.15f))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(
+                    enabled = !busy,
+                    onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val t = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
+                        if (t.isBlank()) vm.toast("Buferda matn yo'q") else vm.importTranslation(context, t, onEdit)
+                    }
+                ) {
+                    Icon(Icons.Default.ContentPaste, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Buferdan import")
+                }
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
+                ) {
+                    Icon(Icons.Default.FileOpen, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Fayldan import")
                 }
             }
         }

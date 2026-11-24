@@ -10,6 +10,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -128,9 +129,10 @@ fun HistoryScreen(
                         }
                     }
                 }
-                items(list, key = { it.video.absolutePath }) { entry ->
+                itemsIndexed(list, key = { _, e -> e.video.absolutePath }) { idx, entry ->
+                  Column(Modifier.animateItem()) {
                     HistoryItem(
-                        Modifier.animateItem(),
+                        Modifier,
                         entry,
                         onDelete = { toDelete = entry },
                         onChanged = { refresh++ },
@@ -138,6 +140,8 @@ fun HistoryScreen(
                         onEditText = { if (curUnits.isNotEmpty()) confirmEdit = entry else doEdit(entry) },
                         onMontage = { vm.openHistoryMontage(context, entry.video, onMontage) }
                     )
+                  if ((idx + 1) % 4 == 0) uz.dublaj.monetization.BannerAd(Modifier.padding(top = 12.dp))
+                  }
                 }
             }
         }
